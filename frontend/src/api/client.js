@@ -1,3 +1,9 @@
+let unauthorizedHandler = null;
+
+export function setUnauthorizedHandler(handler) {
+  unauthorizedHandler = handler;
+}
+
 function getErrorMessage(error, fallback) {
   if (error instanceof Error) {
     return error.message || fallback;
@@ -7,12 +13,17 @@ function getErrorMessage(error, fallback) {
 
 async function request(path, options) {
   const response = await fetch(`/api${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options?.headers || {}),
     },
     ...options,
   });
+
+  if (response.status === 401 && unauthorizedHandler && path !== "/auth/login") {
+    unauthorizedHandler();
+  }
 
   if (!response.ok) {
     let detail = "request failed";
@@ -28,6 +39,30 @@ async function request(path, options) {
   }
 
   return response.json();
+}
+
+export async function login(payload) {
+  return request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function logout() {
+  return request("/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function fetchCurrentUser() {
+  return request("/auth/me");
+}
+
+export async function changePassword(payload) {
+  return request("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchDailyTasks(date) {

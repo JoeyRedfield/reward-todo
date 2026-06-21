@@ -13,12 +13,20 @@ from app.database import get_session_factory, init_db
 from app.models import User
 from app.services.auth_service import AuthService
 
+MIN_PASSWORD_LENGTH = 8
+
 
 def reset_password(session: Session, new_password: str) -> None:
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(
+            f"New password must be at least {MIN_PASSWORD_LENGTH} characters long"
+        )
+
     service = AuthService(session)
-    user = session.scalar(select(User))
-    if user is None:
-        raise ValueError("Initial user does not exist")
+    users = session.scalars(select(User)).all()
+    if len(users) != 1:
+        raise ValueError("Reset password requires exactly one local user")
+    user = users[0]
     service.change_password(user, new_password)
 
 

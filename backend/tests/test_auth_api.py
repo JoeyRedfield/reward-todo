@@ -534,3 +534,25 @@ def test_reset_password_clears_existing_sessions(db_session):
 
     assert service.authenticate_session(raw_token) is None
     assert service.verify_credentials("reward", "brand-new-pass") is not None
+
+
+def test_reset_password_rejects_short_password(db_session):
+    service = AuthService(db_session)
+    service.ensure_initial_user("reward", "super-secret")
+
+    from scripts.reset_password import reset_password
+
+    with pytest.raises(ValueError, match="at least 8 characters"):
+        reset_password(db_session, "short")
+
+
+def test_reset_password_requires_exactly_one_user(db_session):
+    service = AuthService(db_session)
+    service.ensure_initial_user("reward", "super-secret")
+    db_session.add(User(username="second-user", password_hash="hash"))
+    db_session.commit()
+
+    from scripts.reset_password import reset_password
+
+    with pytest.raises(ValueError, match="exactly one local user"):
+        reset_password(db_session, "brand-new-pass")
