@@ -1,10 +1,28 @@
 import os
+import sys
+from pathlib import Path
 from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+
+backend_root = Path(__file__).resolve().parents[1]
+backend_root_path = str(backend_root)
+if backend_root_path not in sys.path:
+    sys.path.insert(0, backend_root_path)
+
+site_packages_root = backend_root / ".venv" / "lib"
+site_packages_dirs = sorted(site_packages_root.glob("python*/site-packages"))
+if not site_packages_dirs and (backend_root / ".venv").exists():
+    raise RuntimeError(
+        "Could not locate site-packages under backend/.venv/lib/python*/site-packages"
+    )
+for site_packages_dir in site_packages_dirs:
+    site_packages_path = str(site_packages_dir)
+    if site_packages_path not in sys.path:
+        sys.path.insert(0, site_packages_path)
 
 os.environ.setdefault("AUTH_INITIAL_USERNAME", "reward")
 os.environ.setdefault("AUTH_INITIAL_PASSWORD", "super-secret")
