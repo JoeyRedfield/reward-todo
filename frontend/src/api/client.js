@@ -21,16 +21,26 @@ async function request(path, options) {
     ...options,
   });
 
-  if (response.status === 401 && unauthorizedHandler && path !== "/auth/login") {
+  let payload = null;
+  if (response.status !== 204) {
+    try {
+      payload = await response.json();
+    } catch {}
+  }
+
+  if (
+    response.status === 401 &&
+    unauthorizedHandler &&
+    payload?.detail === "Authentication required"
+  ) {
     unauthorizedHandler();
   }
 
   if (!response.ok) {
     let detail = "request failed";
-    try {
-      const payload = await response.json();
+    if (payload) {
       detail = payload.detail || detail;
-    } catch {}
+    }
     throw new Error(detail);
   }
 
@@ -38,7 +48,7 @@ async function request(path, options) {
     return null;
   }
 
-  return response.json();
+  return payload;
 }
 
 export async function login(payload) {

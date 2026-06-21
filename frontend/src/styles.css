@@ -49,6 +49,11 @@ button {
   padding: 32px 20px;
 }
 
+.auth-loading {
+  width: min(420px, calc(100vw - 40px));
+  margin: 32px auto;
+}
+
 .auth-card {
   width: min(420px, 100%);
   display: grid;

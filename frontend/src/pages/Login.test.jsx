@@ -61,6 +61,15 @@ test("redirects authenticated users away from login", async () => {
   expect(await screen.findByText("projects page")).toBeInTheDocument();
 });
 
+test("shows loading state while auth is initializing", () => {
+  authState.loading = true;
+
+  renderLogin();
+
+  expect(screen.getByText("加载中...")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "登录" })).not.toBeInTheDocument();
+});
+
 test("shows session expired message and clears flag on submit", async () => {
   authState.sessionExpired = true;
 
@@ -95,4 +104,12 @@ test("shows login failure message", async () => {
   fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
   expect(await screen.findByText("用户名或密码错误")).toBeInTheDocument();
+});
+
+test("falls back to /today for unsafe redirect targets", async () => {
+  authState.user = { id: 1, username: "reward", last_login_at: null };
+
+  renderLogin("/login?redirect=%2F%2Fevil.example");
+
+  expect(await screen.findByText("today page")).toBeInTheDocument();
 });

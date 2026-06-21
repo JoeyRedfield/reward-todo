@@ -12,6 +12,28 @@ services:
     build: ./backend
     env_file:
       - .env
+    environment:
+      AUTH_INITIAL_USERNAME: ${AUTH_INITIAL_USERNAME:-reward}
+      AUTH_INITIAL_PASSWORD: ${AUTH_INITIAL_PASSWORD:-replace-me}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        until python - <<'PY'
+        import psycopg2
+        psycopg2.connect(
+            host="db",
+            port=5432,
+            user="${POSTGRES_USER:-rewardtodo}",
+            password="${POSTGRES_PASSWORD:-rewardtodo}",
+            dbname="${POSTGRES_DB:-rewardtodo}",
+        ).close()
+        PY
+        do
+          sleep 1
+        done
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - db
     networks:
@@ -49,6 +71,12 @@ services:
       - /bin/sh
       - -c
       - |
+        until wget -q -O- http://backend:8000/api/public/health >/dev/null 2>&1; do
+          sleep 1
+        done
+        until wget -q -O- http://frontend:5173/ >/dev/null 2>&1; do
+          sleep 1
+        done
         if [ "$${ENABLE_BASIC_AUTH:-false}" = "true" ]; then
           BASIC_AUTH_BLOCK='auth_basic "Reward Todo";
             auth_basic_user_file /etc/nginx/.htpasswd;'

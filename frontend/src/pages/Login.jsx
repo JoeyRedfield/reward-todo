@@ -3,7 +3,11 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 function resolveRedirectPath(rawRedirect) {
-  if (!rawRedirect || !rawRedirect.startsWith("/")) {
+  if (
+    !rawRedirect ||
+    !rawRedirect.startsWith("/") ||
+    rawRedirect.startsWith("//")
+  ) {
     return "/today";
   }
   return rawRedirect;
@@ -18,6 +22,10 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const redirectPath = resolveRedirectPath(searchParams.get("redirect"));
+
+  if (loading) {
+    return <div className="loading-card auth-loading">加载中...</div>;
+  }
 
   if (!loading && user) {
     return <Navigate replace to={redirectPath} />;
