@@ -1,3 +1,9 @@
+let unauthorizedHandler = null;
+
+export function setUnauthorizedHandler(handler) {
+  unauthorizedHandler = handler;
+}
+
 function getErrorMessage(error, fallback) {
   if (error instanceof Error) {
     return error.message || fallback;
@@ -7,6 +13,7 @@ function getErrorMessage(error, fallback) {
 
 async function request(path, options) {
   const response = await fetch(`/api${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(options?.headers || {}),
@@ -14,12 +21,26 @@ async function request(path, options) {
     ...options,
   });
 
+  let payload = null;
+  if (response.status !== 204) {
+    try {
+      payload = await response.json();
+    } catch {}
+  }
+
+  if (
+    response.status === 401 &&
+    unauthorizedHandler &&
+    payload?.detail === "Authentication required"
+  ) {
+    unauthorizedHandler();
+  }
+
   if (!response.ok) {
     let detail = "request failed";
-    try {
-      const payload = await response.json();
+    if (payload) {
       detail = payload.detail || detail;
-    } catch {}
+    }
     throw new Error(detail);
   }
 
@@ -27,7 +48,31 @@ async function request(path, options) {
     return null;
   }
 
-  return response.json();
+  return payload;
+}
+
+export async function login(payload) {
+  return request("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function logout() {
+  return request("/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function fetchCurrentUser() {
+  return request("/auth/me");
+}
+
+export async function changePassword(payload) {
+  return request("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchDailyTasks(date) {

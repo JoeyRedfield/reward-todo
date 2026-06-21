@@ -7,3 +7,4 @@ pydantic-settings>=2.0,<3
 httpx>=0.28,<1
 pytest>=8.0,<9
 alembic>=1.14,<2
+bcrypt>=4.1,<5

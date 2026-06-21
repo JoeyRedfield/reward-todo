@@ -9,6 +9,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
+`.env.example` 已包含默认本地登录账号：
+
+- 用户名：`reward`
+- 密码：`replace-me`
+
 启动后另开一个终端，执行迁移并灌入演示数据：
 
 ```bash
@@ -33,16 +38,22 @@ cd backend
 
 启动后访问：
 
-- `http://localhost:8088/`：统一入口，需要 Basic Auth
+- `http://localhost:8088/`：统一入口，默认使用应用内登录
 - `http://localhost:8088/api/public/health`：无需认证的后端健康检查
 
-默认占位认证账号：
+默认应用内登录账号：
 
 - 用户名：`reward`
 - 密码：`replace-me`
 
+可选的额外入口保护：
+
+- 设置 `.env` 中 `ENABLE_BASIC_AUTH=true` 后，Nginx 会重新启用 Basic Auth 作为额外前置保护。
+- Basic Auth 用户文件来自 [`proxy/.htpasswd`](/Users/wuzhuoyi/Desktop/code/reward-todo/proxy/.htpasswd)。
+
 说明：
 
-- 当前仓库已包含待办-奖励最小功能链路：后端 API、前端三页、Postgres、Nginx 单入口。
+- 当前仓库已包含待办-奖励最小功能链路：后端 API、前端三页、Postgres、Nginx 单入口，以及应用内登录。
 - 初次启动默认是空库，执行 `backend/scripts/seed_demo_data.py` 后即可在前端看到示例数据。
 - Alembic 已补齐；对全新数据库请先 `upgrade head`，对历史本地开发库请先 `stamp head`，避免重复建表报错。
+- 如需运维重置本地账号密码，可执行 `cd backend && python3 scripts/reset_password.py --password 'new-password'`。

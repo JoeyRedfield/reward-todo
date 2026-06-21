@@ -31,6 +31,13 @@ def test_public_summary_requires_token(client) -> None:
     assert response.json()["detail"] == "Missing bearer token"
 
 
+def test_public_health_remains_open(client) -> None:
+    response = client.get("/api/public/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_public_summary_rejects_invalid_token(client) -> None:
     response = client.get(
         "/api/public/summary",
@@ -153,6 +160,12 @@ def test_public_templates_returns_happy_path_payload(client, db_session) -> None
 
 
 def test_private_create_task_template_rejects_unknown_project_id(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
     response = client.post(
         "/api/task-templates",
         json={
