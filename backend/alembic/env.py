@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import get_settings
 from app.database import Base
-from app.models import DailyTask, RewardLedger, TaskProject, TaskTemplate
+from app.models import DailyTask, RewardLedger, SessionRecord, TaskProject, TaskTemplate, User
 
 config = context.config
 

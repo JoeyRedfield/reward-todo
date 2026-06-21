@@ -6,6 +6,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+os.environ.setdefault("AUTH_INITIAL_USERNAME", "reward")
+os.environ.setdefault("AUTH_INITIAL_PASSWORD", "super-secret")
+os.environ.setdefault("AUTH_COOKIE_SECURE", "false")
+os.environ.setdefault("TESTING", "true")
+
 from app.config import get_settings
 from app.database import Base
 from app.dependencies import get_db_session
