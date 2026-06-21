@@ -3,13 +3,16 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from http.cookies import SimpleCookie
 from types import MethodType
 
 import pytest
 from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import PendingRollbackError
 
 from app.config import get_settings
+from app.dependencies import get_auth_service
 from app.models import SessionRecord, User
 from app.security import verify_password
 from app.services.auth_service import AuthService
@@ -234,3 +237,280 @@ def test_change_password_commits_once_and_clears_sessions(db_session, monkeypatc
     assert verify_password("new-secret", user.password_hash) is True
     assert service.authenticate_session(first_token) is None
     assert service.authenticate_session(second_token) is None
+
+
+def test_login_sets_cookie_and_returns_user(client):
+    cookie_name = get_settings().auth_session_cookie_name
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == 1
+    assert payload["username"] == "reward"
+    assert payload["last_login_at"] is not None
+    set_cookie = response.headers.get("set-cookie")
+    assert set_cookie is not None
+    cookie = SimpleCookie()
+    cookie.load(set_cookie)
+    morsel = cookie[cookie_name]
+    assert morsel.value
+    assert morsel["httponly"]
+    assert morsel["path"] == "/"
+    assert morsel["samesite"].lower() == "lax"
+
+
+def test_protected_me_requires_valid_cookie(client):
+    unauthenticated = client.get("/api/auth/me")
+
+    assert unauthenticated.status_code == 401
+    assert unauthenticated.json() == {"detail": "Authentication required"}
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+
+    assert login_response.status_code == 200
+
+    authenticated = client.get("/api/auth/me")
+
+    assert authenticated.status_code == 200
+    payload = authenticated.json()
+    assert payload["id"] == 1
+    assert payload["username"] == "reward"
+    assert payload["last_login_at"] is not None
+
+
+def test_change_password_rotates_sessions(client):
+    cookie_name = get_settings().auth_session_cookie_name
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+
+    assert login_response.status_code == 200
+    original_cookie_value = client.cookies.get(cookie_name)
+    assert original_cookie_value
+
+    invalid_change_response = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "super-secret",
+            "new_password": "short",
+            "confirm_new_password": "short",
+        },
+    )
+
+    assert invalid_change_response.status_code == 422
+
+    mismatch_change_response = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "super-secret",
+            "new_password": "new-secret-pass",
+            "confirm_new_password": "different-pass",
+        },
+    )
+
+    assert mismatch_change_response.status_code == 400
+    assert mismatch_change_response.json() == {"detail": "New passwords do not match"}
+
+    change_response = client.post(
+        "/api/auth/change-password",
+        json={
+            "current_password": "super-secret",
+            "new_password": "new-secret-pass",
+            "confirm_new_password": "new-secret-pass",
+        },
+    )
+
+    assert change_response.status_code == 200
+    payload = change_response.json()
+    assert payload["id"] == 1
+    assert payload["username"] == "reward"
+    assert payload["last_login_at"] is not None
+    set_cookie = change_response.headers.get("set-cookie")
+    assert set_cookie is not None
+    cookie = SimpleCookie()
+    cookie.load(set_cookie)
+    rotated_cookie = cookie[cookie_name].value
+    assert rotated_cookie
+    assert rotated_cookie != original_cookie_value
+
+    stale_cookie_client = client.__class__(client.app)
+    stale_cookie_client.cookies.set(cookie_name, original_cookie_value)
+    stale_session_response = stale_cookie_client.get("/api/auth/me")
+    assert stale_session_response.status_code == 401
+    assert stale_session_response.json() == {"detail": "Authentication required"}
+
+    me_response = client.get("/api/auth/me")
+    assert me_response.status_code == 200
+    me_payload = me_response.json()
+    assert me_payload["id"] == 1
+    assert me_payload["username"] == "reward"
+    assert me_payload["last_login_at"] is not None
+
+    logout_response = client.post("/api/auth/logout")
+    assert logout_response.status_code == 204
+    logout_set_cookie = logout_response.headers.get("set-cookie")
+    assert logout_set_cookie is not None
+    cleared_cookie = SimpleCookie()
+    cleared_cookie.load(logout_set_cookie)
+    assert cleared_cookie[cookie_name].value == ""
+
+    stale_session_response = client.get("/api/auth/me")
+    assert stale_session_response.status_code == 401
+    assert stale_session_response.json() == {"detail": "Authentication required"}
+
+    old_password_login = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert old_password_login.status_code == 401
+    assert old_password_login.json() == {"detail": "Invalid username or password"}
+
+    new_password_login = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "new-secret-pass"},
+    )
+    assert new_password_login.status_code == 200
+    new_login_payload = new_password_login.json()
+    assert new_login_payload["id"] == 1
+    assert new_login_payload["username"] == "reward"
+    assert new_login_payload["last_login_at"] is not None
+
+
+def test_logout_clears_cookie_even_when_session_cookie_is_invalid(client):
+    cookie_name = get_settings().auth_session_cookie_name
+    client.cookies.set(cookie_name, "invalid-session-token")
+
+    logout_response = client.post("/api/auth/logout")
+
+    assert logout_response.status_code == 204
+    logout_set_cookie = logout_response.headers.get("set-cookie")
+    assert logout_set_cookie is not None
+    cleared_cookie = SimpleCookie()
+    cleared_cookie.load(logout_set_cookie)
+    assert cleared_cookie[cookie_name].value == ""
+    assert cleared_cookie[cookie_name]["path"] == "/"
+
+
+def test_logout_clears_cookie_even_when_session_delete_errors(client, db_session, monkeypatch):
+    cookie_name = get_settings().auth_session_cookie_name
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    test_service = AuthService(db_session)
+    client.app.dependency_overrides[get_auth_service] = lambda: test_service
+
+    original_commit = db_session.commit
+    original_rollback = db_session.rollback
+    rollback_calls = {"count": 0}
+    commit_calls = {"count": 0}
+    session_failed = {"value": False}
+
+    def failing_commit():
+        commit_calls["count"] += 1
+        if session_failed["value"]:
+            raise PendingRollbackError("session is in failed state")
+        if commit_calls["count"] == 1:
+            session_failed["value"] = True
+            raise RuntimeError("delete failed")
+        original_commit()
+
+    def tracking_rollback():
+        rollback_calls["count"] += 1
+        session_failed["value"] = False
+        original_rollback()
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+    monkeypatch.setattr(db_session, "rollback", tracking_rollback)
+
+    logout_response = client.post("/api/auth/logout")
+
+    assert logout_response.status_code == 204
+    assert commit_calls["count"] == 1
+    assert rollback_calls["count"] == 1
+    logout_set_cookie = logout_response.headers.get("set-cookie")
+    assert logout_set_cookie is not None
+    cleared_cookie = SimpleCookie()
+    cleared_cookie.load(logout_set_cookie)
+    assert cleared_cookie[cookie_name].value == ""
+    assert cleared_cookie[cookie_name]["path"] == "/"
+
+    relogin_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert relogin_response.status_code == 200
+
+    client.app.dependency_overrides.pop(get_auth_service, None)
+
+    relogin_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert relogin_response.status_code == 200
+
+
+def test_change_password_is_atomic_when_new_session_creation_fails(client, db_session, monkeypatch):
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    original_commit = db_session.commit
+    original_rollback = db_session.rollback
+    commit_calls = {"count": 0}
+    rollback_calls = {"count": 0}
+
+    def failing_commit():
+        commit_calls["count"] += 1
+        if commit_calls["count"] == 2:
+            raise RuntimeError("commit failed")
+        original_commit()
+
+    def tracking_rollback():
+        rollback_calls["count"] += 1
+        original_rollback()
+
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+    monkeypatch.setattr(db_session, "rollback", tracking_rollback)
+
+    with client.__class__(client.app, raise_server_exceptions=False) as failing_client:
+        failing_client.cookies.update(client.cookies)
+        change_response = failing_client.post(
+            "/api/auth/change-password",
+            json={
+                "current_password": "super-secret",
+                "new_password": "new-secret-pass",
+                "confirm_new_password": "new-secret-pass",
+            },
+        )
+
+    assert change_response.status_code == 500
+    assert commit_calls["count"] >= 2
+    assert rollback_calls["count"] == 1
+
+    me_response = client.get("/api/auth/me")
+    assert me_response.status_code == 200
+
+    old_password_login = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert old_password_login.status_code == 200
+
+    new_password_login = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "new-secret-pass"},
+    )
+    assert new_password_login.status_code == 401

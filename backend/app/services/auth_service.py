@@ -99,6 +99,12 @@ class AuthService:
         self.session.delete(record)
         self.session.commit()
 
+    def delete_session_best_effort(self, raw_token: str) -> None:
+        try:
+            self.delete_session(raw_token)
+        except Exception:
+            self.session.rollback()
+
     def delete_all_sessions_for_user(self, user_id: int) -> None:
         records = self.session.scalars(
             select(SessionRecord).where(SessionRecord.user_id == user_id)
@@ -114,6 +120,35 @@ class AuthService:
         self.session.commit()
         self.session.refresh(user)
         return user
+
+    def change_password_and_create_session(
+        self,
+        user: User,
+        new_password: str,
+    ) -> tuple[User, str, SessionRecord]:
+        now = utc_now()
+        token = generate_session_token()
+        record = SessionRecord(
+            user_id=user.id,
+            session_token_hash=hash_session_token(token),
+            expires_at=session_expiry(self.settings.auth_session_days, now),
+            last_seen_at=now,
+        )
+
+        user.password_hash = hash_password(new_password)
+        user.password_changed_at = now
+        user.last_login_at = now
+        self.delete_all_sessions_for_user(user.id)
+        self.session.add(user)
+        self.session.add(record)
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        self.session.refresh(user)
+        self.session.refresh(record)
+        return user, token, record
 
     def _get_user_by_username(self, username: str) -> Optional[User]:
         return self.session.scalar(select(User).where(User.username == username))
