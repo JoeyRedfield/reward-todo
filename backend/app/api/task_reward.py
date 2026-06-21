@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.dependencies import get_task_reward_service
+from app.dependencies import get_task_reward_service, require_authenticated_user
 from app.schemas.task_reward import (
     CompleteDailyTaskRequest,
     DailyTaskCreate,
@@ -20,7 +20,11 @@ from app.schemas.task_reward import (
 )
 from app.services.task_reward_service import TaskRewardService
 
-router = APIRouter(prefix="/api", tags=["task-reward"])
+router = APIRouter(
+    prefix="/api",
+    tags=["task-reward"],
+    dependencies=[Depends(require_authenticated_user)],
+)
 
 
 def _raise_http_error(exc: ValueError) -> None:

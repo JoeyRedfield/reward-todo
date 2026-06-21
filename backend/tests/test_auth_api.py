@@ -262,6 +262,13 @@ def test_login_sets_cookie_and_returns_user(client):
     assert morsel["samesite"].lower() == "lax"
 
 
+def test_task_projects_requires_login(client):
+    response = client.get("/api/task-projects")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Authentication required"}
+
+
 def test_protected_me_requires_valid_cookie(client):
     unauthenticated = client.get("/api/auth/me")
 
@@ -514,3 +521,16 @@ def test_change_password_is_atomic_when_new_session_creation_fails(client, db_se
         json={"username": "reward", "password": "new-secret-pass"},
     )
     assert new_password_login.status_code == 401
+
+
+def test_reset_password_clears_existing_sessions(db_session):
+    service = AuthService(db_session)
+    user = service.ensure_initial_user("reward", "super-secret")
+    raw_token, _ = service.create_session(user)
+
+    from scripts.reset_password import reset_password
+
+    reset_password(db_session, "brand-new-pass")
+
+    assert service.authenticate_session(raw_token) is None
+    assert service.verify_credentials("reward", "brand-new-pass") is not None
