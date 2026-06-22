@@ -117,7 +117,7 @@ test("shows error when reopen fails", async () => {
 
 - [x] **Step 5: 运行定向前端测试，确认当前为红灯**
 
-Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run src/api/client.test.js src/pages/Today.test.jsx src/App.test.jsx`  
+Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run src/api/client.test.js src/pages/Today.test.jsx src/App.test.jsx`
 Expected: 至少包含 `reopenDailyTask` 未定义或页面缺少撤销按钮的失败
 
 ### Task 2: 实现 reopen API、状态管理和列表交互
@@ -196,7 +196,7 @@ const { tasks, summary, loading, error, pendingTaskId, finishTask, reopenTask } 
 
 - [x] **Step 5: 运行定向前端测试，确认行为转绿**
 
-Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run src/api/client.test.js src/pages/Today.test.jsx src/App.test.jsx`  
+Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run src/api/client.test.js src/pages/Today.test.jsx src/App.test.jsx`
 Expected: reopen 相关测试通过，原有 Today / App 用例无回归
 
 ### Task 3: 全量验证并提交 issue #1 分支
@@ -206,12 +206,12 @@ Expected: reopen 相关测试通过，原有 Today / App 用例无回归
 
 - [x] **Step 1: 运行完整前端测试**
 
-Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run`  
+Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run`
 Expected: 全部通过
 
 - [x] **Step 2: 运行完整后端测试，确认前端改动未影响既有链路**
 
-Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/backend && AUTH_DATABASE_URL=sqlite:///./test.db /Users/wuzhuoyi/Desktop/code/reward-todo/backend/.venv/bin/pytest`  
+Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/backend && AUTH_DATABASE_URL=sqlite:///./test.db /Users/wuzhuoyi/Desktop/code/reward-todo/backend/.venv/bin/pytest`
 Expected: 全部通过
 
 - [x] **Step 3: 更新计划勾选并提交**
