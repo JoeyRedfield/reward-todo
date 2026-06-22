@@ -48,6 +48,7 @@ class TaskRewardService:
                 setattr(project, key, value)
         self.session.commit()
         self.session.refresh(project)
+        self.session.expunge(project)
         return project
 
     def create_task_template(
@@ -86,6 +87,7 @@ class TaskRewardService:
                 setattr(template, key, value)
         self.session.commit()
         self.session.refresh(template)
+        self.session.expunge(template)
         return template
 
     def list_templates(

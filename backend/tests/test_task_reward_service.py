@@ -146,6 +146,34 @@ def test_update_task_template_updates_fields(db_session) -> None:
     assert updated.is_active is False
 
 
+def test_template_can_be_restored_and_used_to_create_daily_task(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
+
+    service.update_task_template(template.id, user=user, is_active=False)
+    with pytest.raises(ValueError, match="模板已停用"):
+        service.create_daily_task(
+            user=user,
+            task_template_id=template.id,
+            date=date(2026, 6, 20),
+            estimated_duration_minutes=30,
+            reward_amount=2000,
+        )
+
+    restored = service.update_task_template(template.id, user=user, is_active=True)
+    task = service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=30,
+        reward_amount=2000,
+    )
+
+    assert restored.is_active is True
+    assert task.task_template_id == template.id
+
+
 def test_create_task_template_rejects_unknown_project_id(db_session) -> None:
     service = TaskRewardService(db_session)
     user = _create_user(db_session)
@@ -200,6 +228,18 @@ def test_update_project_updates_fields(db_session) -> None:
     assert updated.name == "运动"
     assert updated.status == "archived"
     assert updated.sort_order == 9
+
+
+def test_update_project_can_archive_and_restore(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    project = service.create_project(name="健身", user=user)
+
+    archived = service.update_project(project.id, user=user, status="archived")
+    restored = service.update_project(project.id, user=user, status="active")
+
+    assert archived.status == "archived"
+    assert restored.status == "active"
 
 
 def test_reward_summary_returns_current_balance_and_today_earned(db_session) -> None:
