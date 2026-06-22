@@ -5,13 +5,16 @@ import App from "./App";
 const authState = {
   currentUser: null,
   loginResult: { id: 1, username: "reward", last_login_at: null },
+  registerResult: { id: 2, username: "new-user", last_login_at: null },
   changePasswordError: null,
   loginError: null,
+  registerError: null,
 };
 
 const apiMocks = vi.hoisted(() => ({
   fetchCurrentUserMock: vi.fn(),
   loginMock: vi.fn(),
+  registerMock: vi.fn(),
   logoutMock: vi.fn(),
   changePasswordMock: vi.fn(),
   fetchDailyTasksMock: vi.fn(),
@@ -31,6 +34,7 @@ vi.mock("./api/client", () => ({
   setUnauthorizedHandler: vi.fn(),
   fetchCurrentUser: apiMocks.fetchCurrentUserMock,
   login: apiMocks.loginMock,
+  register: apiMocks.registerMock,
   logout: apiMocks.logoutMock,
   changePassword: apiMocks.changePasswordMock,
   fetchDailyTasks: apiMocks.fetchDailyTasksMock,
@@ -57,6 +61,7 @@ beforeEach(() => {
   authState.currentUser = null;
   authState.loginError = null;
   authState.changePasswordError = null;
+  authState.registerError = null;
 
   apiMocks.fetchCurrentUserMock.mockImplementation(async () => {
     if (!authState.currentUser) {
@@ -70,6 +75,13 @@ beforeEach(() => {
     }
     authState.currentUser = authState.loginResult;
     return authState.loginResult;
+  });
+  apiMocks.registerMock.mockImplementation(async () => {
+    if (authState.registerError) {
+      throw authState.registerError;
+    }
+    authState.currentUser = authState.registerResult;
+    return authState.registerResult;
   });
   apiMocks.logoutMock.mockResolvedValue({ ok: true });
   apiMocks.changePasswordMock.mockImplementation(async () => {
@@ -121,6 +133,38 @@ test("redirects unauthenticated users to login", async () => {
   renderAt("/today");
 
   expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
+});
+
+test("renders signup page at /signup", async () => {
+  renderAt("/signup");
+
+  expect(await screen.findByRole("heading", { name: "创建账号" })).toBeInTheDocument();
+  expect(screen.getByText("步骤 1 / 2")).toBeInTheDocument();
+});
+
+test("moves signup flow to next step after submitting basic info", async () => {
+  renderAt("/signup");
+
+  await screen.findByRole("heading", { name: "创建账号" });
+  fireEvent.change(screen.getByLabelText("用户名"), {
+    target: { value: "new-user" },
+  });
+  fireEvent.change(screen.getByLabelText("密码"), {
+    target: { value: "super-secret" },
+  });
+  fireEvent.change(screen.getByLabelText("确认密码"), {
+    target: { value: "super-secret" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "继续" }));
+
+  await waitFor(() => {
+    expect(apiMocks.registerMock).toHaveBeenCalledWith({
+      username: "new-user",
+      password: "super-secret",
+    });
+    expect(screen.getByText("步骤 2 / 2")).toBeInTheDocument();
+    expect(screen.getByText("账号已创建")).toBeInTheDocument();
+  });
 });
 
 test("redirects back to requested page after login", async () => {

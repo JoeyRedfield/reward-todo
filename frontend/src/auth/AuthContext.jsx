@@ -4,6 +4,7 @@ import {
   fetchCurrentUser,
   login as loginRequest,
   logout as logoutRequest,
+  register as registerRequest,
   setUnauthorizedHandler,
 } from "../api/client";
 
@@ -63,6 +64,13 @@ export function AuthProvider({ children }) {
     return currentUser;
   }
 
+  async function register(payload) {
+    const currentUser = await registerRequest(payload);
+    setUser(currentUser);
+    setSessionExpired(false);
+    return currentUser;
+  }
+
   async function logout() {
     try {
       await logoutRequest();
@@ -91,6 +99,7 @@ export function AuthProvider({ children }) {
         sessionExpired,
         clearSessionExpired,
         login,
+        register,
         logout,
         changePassword,
       }}

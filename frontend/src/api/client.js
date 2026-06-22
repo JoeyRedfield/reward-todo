@@ -58,6 +58,13 @@ export async function login(payload) {
   });
 }
 
+export async function register(payload) {
+  return request("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function logout() {
   return request("/auth/logout", {
     method: "POST",
