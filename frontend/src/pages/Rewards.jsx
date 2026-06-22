@@ -7,10 +7,14 @@ export default function RewardsPage() {
   return (
     <div className="page-stack">
       <header className="page-head">
-        <div>
+        <div className="page-head-main">
           <div className="page-kicker">Rewards</div>
           <h2>把奖励额度当作账本，明确地赚、明确地花。</h2>
         </div>
+        <aside className="page-stamp">
+          <div className="page-stamp-label">本页用途</div>
+          <div className="page-stamp-value">记录流入，也记录流出。</div>
+        </aside>
       </header>
       {board.loading ? (
         <div className="loading-card">加载中...</div>

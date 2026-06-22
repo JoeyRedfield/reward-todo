@@ -4,8 +4,20 @@ import App from "./App";
 
 const authState = {
   currentUser: null,
-  loginResult: { id: 1, username: "reward", last_login_at: null },
-  registerResult: { id: 2, username: "new-user", last_login_at: null },
+  loginResult: {
+    id: 1,
+    username: "reward",
+    display_name: "Reward",
+    email: "reward@local.invalid",
+    last_login_at: null,
+  },
+  registerResult: {
+    id: 2,
+    username: "new-user",
+    display_name: "New User",
+    email: "new-user@example.com",
+    last_login_at: null,
+  },
   changePasswordError: null,
   loginError: null,
   registerError: null,
@@ -144,6 +156,8 @@ beforeEach(() => {
   apiMocks.fetchAccountProfileMock.mockResolvedValue({
     id: 1,
     username: "reward",
+    display_name: "Reward",
+    email: "reward@local.invalid",
     created_at: "2026-06-22T00:00:00Z",
     password_changed_at: "2026-06-22T00:00:00Z",
     last_login_at: "2026-06-22T01:00:00Z",
@@ -276,7 +290,8 @@ test("shows account actions in sidebar", async () => {
 
   renderAt("/today");
 
-  expect(await screen.findByText("reward")).toBeInTheDocument();
+  expect(await screen.findByText("Reward")).toBeInTheDocument();
+  expect(screen.getByText("@reward")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "账号设置" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "登出" })).toBeInTheDocument();
 });
@@ -286,7 +301,7 @@ test("logs out from sidebar account panel", async () => {
 
   renderAt("/today");
 
-  await screen.findByText("reward");
+  await screen.findByText("Reward");
   fireEvent.click(screen.getByRole("button", { name: "登出" }));
 
   await waitFor(() => {

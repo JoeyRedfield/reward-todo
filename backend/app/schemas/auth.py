@@ -52,6 +52,8 @@ class ChangePasswordRequest(BaseModel):
 class AccountProfileRead(BaseModel):
     id: int
     username: str
+    display_name: str
+    email: str
     created_at: datetime
     password_changed_at: datetime
     last_login_at: Optional[datetime]

@@ -7,10 +7,14 @@ export default function ProjectsPage() {
   return (
     <div className="page-stack">
       <header className="page-head">
-        <div>
+        <div className="page-head-main">
           <div className="page-kicker">Projects</div>
           <h2>长期项目决定方向，模板决定今天怎么开工。</h2>
         </div>
+        <aside className="page-stamp">
+          <div className="page-stamp-label">本页用途</div>
+          <div className="page-stamp-value">沉淀可复用的开工模板。</div>
+        </aside>
       </header>
       {board.loading ? (
         <div className="loading-card">加载中...</div>

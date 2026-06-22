@@ -30,6 +30,8 @@ beforeEach(() => {
   apiMocks.fetchAccountProfileMock.mockResolvedValue({
     id: 1,
     username: "reward",
+    display_name: "Reward Admin",
+    email: "reward@example.com",
     created_at: "2026-06-22T00:00:00Z",
     password_changed_at: "2026-06-22T00:00:00Z",
     last_login_at: "2026-06-22T01:00:00Z",
@@ -71,6 +73,8 @@ beforeEach(() => {
   apiMocks.changePasswordMock.mockResolvedValue({
     id: 1,
     username: "reward",
+    display_name: "Reward Admin",
+    email: "reward@example.com",
     created_at: "2026-06-22T00:00:00Z",
     password_changed_at: "2026-06-22T04:00:00Z",
     last_login_at: "2026-06-22T01:00:00Z",
@@ -93,8 +97,9 @@ beforeEach(() => {
 test("renders account profile, sessions and tokens", async () => {
   render(<AccountPage />);
 
-  expect(await screen.findByRole("heading", { name: "账号设置" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Reward Admin 的账号设置" })).toBeInTheDocument();
   expect(screen.getByText("账号资料")).toBeInTheDocument();
+  expect(screen.getByText("reward@example.com")).toBeInTheDocument();
   expect(screen.getByText("最近登录与会话")).toBeInTheDocument();
   expect(screen.getByText("密码修改")).toBeInTheDocument();
   expect(screen.getByText("Token 管理")).toBeInTheDocument();
@@ -104,7 +109,7 @@ test("renders account profile, sessions and tokens", async () => {
 test("submits password change from the account page", async () => {
   render(<AccountPage />);
 
-  await screen.findByRole("heading", { name: "账号设置" });
+  await screen.findByRole("heading", { name: "Reward Admin 的账号设置" });
 
   fireEvent.change(screen.getAllByLabelText("当前密码")[0], {
     target: { value: "old-secret" },
@@ -130,7 +135,7 @@ test("submits password change from the account page", async () => {
 test("creates and shows a new mcp token", async () => {
   render(<AccountPage />);
 
-  await screen.findByRole("heading", { name: "账号设置" });
+  await screen.findByRole("heading", { name: "Reward Admin 的账号设置" });
 
   fireEvent.change(screen.getByLabelText("Token 名称"), {
     target: { value: "Claude Desktop" },
@@ -171,7 +176,7 @@ test("shows agent config snippet for api token", async () => {
 
   render(<AccountPage />);
 
-  await screen.findByRole("heading", { name: "账号设置" });
+  await screen.findByRole("heading", { name: "Reward Admin 的账号设置" });
 
   fireEvent.change(screen.getByLabelText("Token 名称"), {
     target: { value: "Codex Agent" },
@@ -205,7 +210,7 @@ test("supports custom expiry and never-expire token options", async () => {
 
   render(<AccountPage />);
 
-  await screen.findByRole("heading", { name: "账号设置" });
+  await screen.findByRole("heading", { name: "Reward Admin 的账号设置" });
 
   fireEvent.change(screen.getByLabelText("Token 名称"), {
     target: { value: "Long Lived API" },
@@ -291,6 +296,8 @@ test("hides token creation when api token and mcp are both disabled", async () =
   apiMocks.fetchAccountProfileMock.mockResolvedValueOnce({
     id: 1,
     username: "reward",
+    display_name: "Reward Admin",
+    email: "reward@example.com",
     created_at: "2026-06-22T00:00:00Z",
     password_changed_at: "2026-06-22T00:00:00Z",
     last_login_at: "2026-06-22T01:00:00Z",
@@ -300,7 +307,7 @@ test("hides token creation when api token and mcp are both disabled", async () =
 
   render(<AccountPage />);
 
-  await screen.findByRole("heading", { name: "账号设置" });
+  await screen.findByRole("heading", { name: "Reward Admin 的账号设置" });
 
   expect(screen.getByText("当前服务未启用 Agent API Token 或 MCP。")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "生成 Token" })).not.toBeInTheDocument();
@@ -311,6 +318,8 @@ test("only shows enabled token types from server capabilities", async () => {
   apiMocks.fetchAccountProfileMock.mockResolvedValueOnce({
     id: 1,
     username: "reward",
+    display_name: "Reward Admin",
+    email: "reward@example.com",
     created_at: "2026-06-22T00:00:00Z",
     password_changed_at: "2026-06-22T00:00:00Z",
     last_login_at: "2026-06-22T01:00:00Z",
@@ -320,7 +329,7 @@ test("only shows enabled token types from server capabilities", async () => {
 
   render(<AccountPage />);
 
-  await screen.findByRole("heading", { name: "账号设置" });
+  await screen.findByRole("heading", { name: "Reward Admin 的账号设置" });
 
   const tokenTypeSelect = screen.getByLabelText("Token 类型");
   const tokenTypeOptions = Array.from(tokenTypeSelect.querySelectorAll("option")).map(

@@ -1,11 +1,25 @@
 :root {
   color-scheme: light;
   font-family:
-    "Inter",
     "PingFang SC",
     "Hiragino Sans GB",
+    "Source Han Sans SC",
     "Microsoft YaHei",
+    "Helvetica Neue",
     sans-serif;
+  --display-font:
+    "Songti SC",
+    "STSong",
+    "Noto Serif CJK SC",
+    serif;
+  --body-font:
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Source Han Sans SC",
+    "Microsoft YaHei",
+    "Helvetica Neue",
+    sans-serif;
+  --mono-font: "SFMono-Regular", "IBM Plex Mono", "Menlo", monospace;
   --bg-linen: #f4f7fb;
   --bg-mist: #eef3f9;
   --ink: #182330;
@@ -37,6 +51,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  font-family: var(--body-font);
   background:
     linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.42)),
     linear-gradient(180deg, rgba(238, 243, 249, 0.8), rgba(246, 248, 251, 0.94));
@@ -117,7 +132,7 @@ a:focus-visible {
 .summary-serial,
 .account-label,
 .page-stamp-label {
-  font-family: "SFMono-Regular", "IBM Plex Mono", "Menlo", monospace;
+  font-family: var(--mono-font);
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 11px;
@@ -135,6 +150,7 @@ a:focus-visible {
   display: grid;
   gap: 4px;
   margin: 0;
+  font-family: var(--display-font);
   font-size: clamp(1.9rem, 2.6vw, 2.7rem);
   line-height: 1.02;
   letter-spacing: -0.02em;
@@ -149,6 +165,7 @@ a:focus-visible {
   max-width: 18rem;
   color: var(--ink-soft);
   line-height: 1.65;
+  font-size: 15px;
 }
 
 .brand-meter {
@@ -167,7 +184,7 @@ a:focus-visible {
 }
 
 .brand-meter-item span {
-  font-family: "SFMono-Regular", "IBM Plex Mono", "Menlo", monospace;
+  font-family: var(--mono-font);
   font-size: 11px;
   letter-spacing: 0.14em;
   color: var(--ink-muted);
@@ -217,6 +234,7 @@ a:focus-visible {
 
 .auth-intro h1 {
   margin: 0;
+  font-family: var(--display-font);
   font-size: clamp(2.4rem, 4vw, 3.4rem);
   line-height: 1.04;
   letter-spacing: -0.03em;
@@ -266,6 +284,7 @@ a:focus-visible {
 
 .auth-form-head h2 {
   margin: 0;
+  font-family: var(--display-font);
   font-size: 1.5rem;
   line-height: 1.2;
   letter-spacing: -0.02em;
@@ -385,10 +404,16 @@ a:focus-visible {
 }
 
 .account-name {
-  font-family: "Avenir Next Condensed", "DIN Alternate", "Arial Narrow", sans-serif;
-  font-size: 28px;
+  font-family: var(--display-font);
+  font-size: 30px;
   line-height: 1;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
+}
+
+.account-secondary {
+  color: var(--ink-soft);
+  font-size: 13px;
+  letter-spacing: 0.04em;
 }
 
 .account-actions {
@@ -473,10 +498,11 @@ a:focus-visible {
 
 .page-head-main h1,
 .page-head-main h2 {
+  font-family: var(--display-font);
   font-size: clamp(1.85rem, 3vw, 2.6rem);
-  line-height: 1.08;
+  line-height: 1.12;
   letter-spacing: -0.03em;
-  max-width: 18ch;
+  max-width: 14ch;
 }
 
 .page-stamp {
@@ -591,6 +617,7 @@ a:focus-visible {
 }
 
 .panel-head h2 {
+  font-family: var(--display-font);
   font-size: 1.35rem;
   line-height: 1.2;
   letter-spacing: -0.02em;
@@ -627,7 +654,7 @@ a:focus-visible {
 }
 
 .account-overview-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .account-session-grid {
@@ -662,6 +689,11 @@ a:focus-visible {
 
 .account-meta-row strong {
   font-weight: 600;
+}
+
+.summary-value--wrap {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.1rem, 1.8vw, 1.4rem);
 }
 
 .account-session-card,
@@ -885,7 +917,7 @@ textarea {
 }
 
 .ledger-amount {
-  font-family: "SFMono-Regular", "IBM Plex Mono", "Menlo", monospace;
+  font-family: var(--mono-font);
   font-size: 16px;
   font-weight: 700;
 }

@@ -273,22 +273,24 @@ export default function AccountPage() {
             "sh skills/reward-todo/scripts/rewardtools.sh projects-list",
           ].join("\n")
         : "";
+  const accountHeading = profile?.display_name
+    ? `${profile.display_name} 的账号设置`
+    : "账号设置";
 
   return (
     <div className="page-stack">
       <header className="page-head">
         <div className="page-head-main">
           <div className="page-kicker">Account Center</div>
-          <h1>账号设置</h1>
+          <h1>{accountHeading}</h1>
           <p className="page-head-copy">
-            在这里维护账号资料、登录安全、会话状态，以及给 Agent 或 MCP 使用的访问
-            Token。
+            维护显示名、邮箱、密码、活跃会话，以及给 Agent / MCP 使用的访问凭据。
           </p>
         </div>
         <aside className="page-stamp">
-          <div className="page-stamp-label">安全摘要</div>
+          <div className="page-stamp-label">本页用途</div>
           <div className="page-stamp-value">
-            最近登录、密码更新和外部访问能力都集中在这个页面。
+            账号资料、安全边界和外部访问入口都集中在这里。
           </div>
         </aside>
       </header>
@@ -306,19 +308,30 @@ export default function AccountPage() {
             </div>
             <div className="account-overview-grid">
               <article className="summary-card">
-                <div className="summary-label">用户名</div>
-                <div className="summary-value account-metric">{profile?.username ?? "-"}</div>
-                <div className="summary-hint">账号已完成基础认证，可直接访问工作台。</div>
+                <div className="summary-label">显示名称</div>
+                <div className="summary-value account-metric summary-value--wrap">
+                  {profile?.display_name ?? "-"}
+                </div>
+                <div className="summary-hint">这是工作台里主要展示给你的称呼。</div>
               </article>
               <article className="summary-card">
-                <div className="summary-label">创建时间</div>
-                <div className="summary-value account-metric">
-                  {formatDateTime(profile?.created_at)}
+                <div className="summary-label">用户名</div>
+                <div className="summary-value account-metric">@{profile?.username ?? "-"}</div>
+                <div className="summary-hint">用于登录，也会作为默认的系统标识。</div>
+              </article>
+              <article className="summary-card">
+                <div className="summary-label">邮箱</div>
+                <div className="summary-value account-metric summary-value--wrap">
+                  {profile?.email ?? "-"}
                 </div>
-                <div className="summary-hint">用于追踪账号启用时间。</div>
+                <div className="summary-hint">注册时填写的联系邮箱会保存在这里。</div>
               </article>
             </div>
             <div className="account-meta-list">
+              <div className="account-meta-row">
+                <span>创建时间</span>
+                <strong>{formatDateTime(profile?.created_at)}</strong>
+              </div>
               <div className="account-meta-row">
                 <span>最近登录</span>
                 <strong>{formatDateTime(profile?.last_login_at)}</strong>

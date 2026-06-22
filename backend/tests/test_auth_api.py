@@ -18,6 +18,7 @@ from app.main import create_app
 from app.models import SessionRecord, TaskProject, TaskTemplate, User
 from app.security import hash_password, verify_password
 from app.services.auth_service import AuthService
+from scripts.bootstrap_alembic import detect_legacy_revision
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +35,8 @@ def isolated_settings_env(tmp_path, monkeypatch):
     monkeypatch.delenv("READONLY_TOKEN", raising=False)
     monkeypatch.delenv("AUTH_INITIAL_USERNAME", raising=False)
     monkeypatch.delenv("AUTH_INITIAL_PASSWORD", raising=False)
+    monkeypatch.delenv("APP_BASIC_AUTH_USER", raising=False)
+    monkeypatch.delenv("APP_BASIC_AUTH_PASSWORD", raising=False)
     monkeypatch.delenv("AUTH_COOKIE_SECURE", raising=False)
     monkeypatch.delenv("AUTH_COOKIE_SAMESITE", raising=False)
     monkeypatch.delenv("AUTH_SESSION_DAYS", raising=False)
@@ -65,6 +68,18 @@ def test_settings_require_initial_credentials_outside_test(monkeypatch, isolated
     assert settings.auth_initial_password == "secret-pass"
     assert settings.auth_session_days == 7
     assert settings.auth_cookie_samesite == "lax"
+
+
+def test_settings_accept_legacy_initial_auth_env_names(monkeypatch, isolated_settings_env):
+    monkeypatch.setenv("APP_BASIC_AUTH_USER", "legacy-user")
+    monkeypatch.setenv("APP_BASIC_AUTH_PASSWORD", "legacy-secret")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+    monkeypatch.setenv("TESTING", "false")
+
+    settings = get_settings()
+
+    assert settings.auth_initial_username == "legacy-user"
+    assert settings.auth_initial_password == "legacy-secret"
 
 
 def test_settings_enable_registration_by_default(monkeypatch, isolated_settings_env):
@@ -116,6 +131,90 @@ def test_auth_models_are_registered():
 
     assert models.User.__tablename__ == "users"
     assert models.SessionRecord.__tablename__ == "sessions"
+
+
+class StubInspector:
+    def __init__(self, tables, columns_by_table):
+        self.tables = tables
+        self.columns_by_table = columns_by_table
+
+    def get_table_names(self):
+        return list(self.tables)
+
+    def get_columns(self, table_name):
+        return [{"name": column_name} for column_name in self.columns_by_table.get(table_name, [])]
+
+
+def test_detect_legacy_revision_for_task_reward_only_schema():
+    inspector = StubInspector(
+        tables={"task_projects", "task_templates", "daily_tasks", "reward_ledger"},
+        columns_by_table={},
+    )
+
+    assert detect_legacy_revision(inspector) == "0001_init_task_reward"
+
+
+def test_detect_legacy_revision_for_pre_profile_auth_schema():
+    inspector = StubInspector(
+        tables={
+            "task_projects",
+            "task_templates",
+            "daily_tasks",
+            "reward_ledger",
+            "users",
+            "sessions",
+            "access_tokens",
+        },
+        columns_by_table={
+            "users": {"id", "username", "password_hash"},
+        },
+    )
+
+    assert detect_legacy_revision(inspector) == "0002_add_auth_tables"
+
+
+def test_detect_legacy_revision_for_pre_ownership_schema():
+    inspector = StubInspector(
+        tables={
+            "task_projects",
+            "task_templates",
+            "daily_tasks",
+            "reward_ledger",
+            "users",
+            "sessions",
+            "access_tokens",
+        },
+        columns_by_table={
+            "users": {"id", "username", "password_hash", "display_name", "email"},
+            "task_projects": {"id", "name"},
+            "daily_tasks": {"id", "project_id"},
+            "reward_ledger": {"id", "daily_task_id"},
+        },
+    )
+
+    assert detect_legacy_revision(inspector) == "0004_add_user_profile_and_registration_flag"
+
+
+def test_detect_legacy_revision_for_head_schema_without_version_table():
+    inspector = StubInspector(
+        tables={
+            "task_projects",
+            "task_templates",
+            "daily_tasks",
+            "reward_ledger",
+            "users",
+            "sessions",
+            "access_tokens",
+        },
+        columns_by_table={
+            "users": {"id", "username", "password_hash", "display_name", "email"},
+            "task_projects": {"id", "name", "user_id"},
+            "daily_tasks": {"id", "project_id", "user_id"},
+            "reward_ledger": {"id", "daily_task_id", "user_id"},
+        },
+    )
+
+    assert detect_legacy_revision(inspector) == "0005_add_user_ownership_to_task_reward"
 
 
 def _build_alembic_subprocess(backend_dir: Path) -> tuple[list[str], dict[str, str]]:
@@ -496,6 +595,67 @@ def test_auth_migration_0005_creates_bootstrap_user_when_legacy_data_exists_with
         assert ownership_row["project_user_id"] == user_row["id"]
         assert ownership_row["task_user_id"] == user_row["id"]
         assert ownership_row["ledger_user_id"] == user_row["id"]
+    finally:
+        engine.dispose()
+
+
+def test_auth_migration_0005_accepts_legacy_initial_auth_env_names(tmp_path, monkeypatch):
+    database_path = tmp_path / "task_reward_legacy_bootstrap_user.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.delenv("AUTH_INITIAL_USERNAME", raising=False)
+    monkeypatch.delenv("AUTH_INITIAL_PASSWORD", raising=False)
+    monkeypatch.setenv("APP_BASIC_AUTH_USER", "Legacy Reward")
+    monkeypatch.setenv("APP_BASIC_AUTH_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    _, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env.pop("AUTH_INITIAL_USERNAME", None)
+    env.pop("AUTH_INITIAL_PASSWORD", None)
+    env["APP_BASIC_AUTH_USER"] = "Legacy Reward"
+    env["APP_BASIC_AUTH_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
+
+    _run_alembic(backend_dir, env, "upgrade", "0004_add_user_profile_and_registration_flag")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO task_projects
+                    (id, name, status, sort_order, created_at, updated_at)
+                VALUES
+                    (1, 'Legacy Project', 'active', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+    finally:
+        engine.dispose()
+
+    _run_alembic(backend_dir, env, "upgrade", "head")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.connect() as connection:
+            user_row = connection.exec_driver_sql(
+                """
+                SELECT username, display_name, email
+                FROM users
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            ).mappings().one()
+            task_project_user_id = connection.exec_driver_sql(
+                "SELECT user_id FROM task_projects WHERE id = 1"
+            ).scalar_one()
+
+        assert user_row["username"] == "legacy reward"
+        assert user_row["display_name"] == "legacy reward"
+        assert user_row["email"] == "legacy reward@local.invalid"
+        assert task_project_user_id == 1
     finally:
         engine.dispose()
 
@@ -1000,6 +1160,25 @@ def test_protected_me_requires_valid_cookie(client):
     assert payload["display_name"] == "reward"
     assert payload["email"] == "reward@local.invalid"
     assert payload["last_login_at"] is not None
+
+
+def test_account_profile_returns_display_name_and_email(client):
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+
+    assert login_response.status_code == 200
+
+    profile_response = client.get("/api/account/profile")
+
+    assert profile_response.status_code == 200
+    payload = profile_response.json()
+    assert payload["username"] == "reward"
+    assert payload["display_name"] == "reward"
+    assert payload["email"] == "reward@local.invalid"
+    assert payload["api_token_enabled"] is True
+    assert payload["mcp_enabled"] is True
 
 
 def test_change_password_rotates_sessions(client):

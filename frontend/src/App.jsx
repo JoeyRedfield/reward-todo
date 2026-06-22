@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import Layout from "./components/Layout";
+import AccountPage from "./pages/Account";
 import LoginPage from "./pages/Login";
 import SignupPage from "./pages/Signup";
 import TodayPage from "./pages/Today";
@@ -21,6 +22,7 @@ export default function App() {
               <Route path="/today" element={<TodayPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/rewards" element={<RewardsPage />} />
+              <Route path="/account" element={<AccountPage />} />
             </Route>
           </Route>
         </Routes>

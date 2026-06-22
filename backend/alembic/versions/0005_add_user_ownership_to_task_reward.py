@@ -5,12 +5,12 @@ Revises: 0004_add_user_profile_and_registration_flag
 Create Date: 2026-06-22
 """
 
-import os
 from typing import Optional
 
 from alembic import op
 import sqlalchemy as sa
 
+from app.config import resolve_initial_auth_credentials_from_env
 from app.security import hash_password, normalize_username
 
 
@@ -21,7 +21,8 @@ depends_on = None
 
 
 def _resolve_bootstrap_user_id(connection) -> Optional[int]:
-    initial_username = os.environ.get("AUTH_INITIAL_USERNAME", "")
+    initial_username, initial_password = resolve_initial_auth_credentials_from_env()
+    initial_username = initial_username or ""
     normalized_username = normalize_username(initial_username) if initial_username else ""
     if normalized_username:
         bootstrap_user_id = connection.execute(
@@ -51,10 +52,11 @@ def _resolve_bootstrap_user_id(connection) -> Optional[int]:
     if bootstrap_user_id is not None:
         return int(bootstrap_user_id)
 
-    initial_password = os.environ.get("AUTH_INITIAL_PASSWORD", "")
+    initial_password = initial_password or ""
     if not normalized_username or not initial_password:
         raise RuntimeError(
             "0005 migration requires AUTH_INITIAL_USERNAME and AUTH_INITIAL_PASSWORD "
+            "(legacy APP_BASIC_AUTH_USER and APP_BASIC_AUTH_PASSWORD are also supported) "
             "when legacy task/reward data exists without any users"
         )
 

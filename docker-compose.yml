@@ -13,13 +13,14 @@ services:
     env_file:
       - .env
     environment:
-      AUTH_INITIAL_USERNAME: ${AUTH_INITIAL_USERNAME:-reward}
-      AUTH_INITIAL_PASSWORD: ${AUTH_INITIAL_PASSWORD:-replace-me}
+      AUTH_INITIAL_USERNAME: ${AUTH_INITIAL_USERNAME:-${APP_BASIC_AUTH_USER:-reward}}
+      AUTH_INITIAL_PASSWORD: ${AUTH_INITIAL_PASSWORD:-${APP_BASIC_AUTH_PASSWORD:-replace-me}}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
     command:
       - /bin/sh
       - -c
       - |
+        set -e
         until python - <<'PY'
         import psycopg2
         psycopg2.connect(
@@ -33,6 +34,9 @@ services:
         do
           sleep 1
         done
+        export PYTHONPATH=/app
+        python scripts/bootstrap_alembic.py
+        alembic upgrade head
         exec uvicorn app.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - db
@@ -43,6 +47,8 @@ services:
     working_dir: /app
     volumes:
       - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/scripts:/app/scripts
 
   frontend:

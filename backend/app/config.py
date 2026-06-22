@@ -1,8 +1,20 @@
+import os
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _resolve_compat_env(primary_key: str, legacy_key: str) -> Optional[str]:
+    return os.environ.get(primary_key) or os.environ.get(legacy_key)
+
+
+def resolve_initial_auth_credentials_from_env() -> tuple[Optional[str], Optional[str]]:
+    return (
+        _resolve_compat_env("AUTH_INITIAL_USERNAME", "APP_BASIC_AUTH_USER"),
+        _resolve_compat_env("AUTH_INITIAL_PASSWORD", "APP_BASIC_AUTH_PASSWORD"),
+    )
 
 
 class Settings(BaseSettings):
@@ -27,6 +39,17 @@ class Settings(BaseSettings):
     auth_enable_mcp: bool = True
     testing: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def apply_legacy_initial_auth_env(cls, data):
+        values = dict(data or {})
+        username, password = resolve_initial_auth_credentials_from_env()
+        if not values.get("auth_initial_username") and username:
+            values["auth_initial_username"] = username
+        if not values.get("auth_initial_password") and password:
+            values["auth_initial_password"] = password
+        return values
+
     @field_validator("auth_cookie_samesite")
     @classmethod
     def validate_auth_cookie_samesite(cls, value: str) -> str:
@@ -49,5 +72,8 @@ def get_settings() -> Settings:
     if not settings.testing and (
         not settings.auth_initial_username or not settings.auth_initial_password
     ):
-        raise ValueError("AUTH_INITIAL_USERNAME and AUTH_INITIAL_PASSWORD are required")
+        raise ValueError(
+            "AUTH_INITIAL_USERNAME and AUTH_INITIAL_PASSWORD are required "
+            "(legacy APP_BASIC_AUTH_USER and APP_BASIC_AUTH_PASSWORD are also supported)"
+        )
     return settings
