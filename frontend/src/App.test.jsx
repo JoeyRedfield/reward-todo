@@ -149,6 +149,12 @@ test("moves signup flow to next step after submitting basic info", async () => {
   fireEvent.change(screen.getByLabelText("用户名"), {
     target: { value: "new-user" },
   });
+  fireEvent.change(screen.getByLabelText("显示名称"), {
+    target: { value: "New User" },
+  });
+  fireEvent.change(screen.getByLabelText("邮箱"), {
+    target: { value: "new-user@example.com" },
+  });
   fireEvent.change(screen.getByLabelText("密码"), {
     target: { value: "super-secret" },
   });
@@ -158,11 +164,22 @@ test("moves signup flow to next step after submitting basic info", async () => {
   fireEvent.click(screen.getByRole("button", { name: "继续" }));
 
   await waitFor(() => {
+    expect(apiMocks.registerMock).not.toHaveBeenCalled();
+    expect(screen.getByText("步骤 2 / 2")).toBeInTheDocument();
+    expect(screen.getByText("创建默认工作区")).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "创建账号" }));
+
+  await waitFor(() => {
     expect(apiMocks.registerMock).toHaveBeenCalledWith({
       username: "new-user",
+      display_name: "New User",
+      email: "new-user@example.com",
       password: "super-secret",
+      confirm_password: "super-secret",
+      create_default_workspace: true,
     });
-    expect(screen.getByText("步骤 2 / 2")).toBeInTheDocument();
     expect(screen.getByText("账号已创建")).toBeInTheDocument();
   });
 });
