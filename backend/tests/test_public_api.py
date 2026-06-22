@@ -91,6 +91,27 @@ def test_public_summary_returns_current_balance_and_today_earned(client, db_sess
     }
 
 
+def test_private_reward_summary_rolls_back_today_earned_after_reopen(client, db_session) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _, _, _, task = _seed_data(db_session, user=user)
+
+    reopen_response = client.post(f"/api/daily-tasks/{task.id}/reopen")
+    assert reopen_response.status_code == 200
+
+    summary_response = client.get("/api/rewards/summary")
+    assert summary_response.status_code == 200
+    assert summary_response.json() == {
+        "current_balance": 0,
+        "today_earned": 0,
+    }
+
+
 def test_public_today_returns_snapshot_based_task_payload(client, db_session) -> None:
     login_response = client.post(
         "/api/auth/login",

@@ -218,7 +218,6 @@ class TaskRewardService:
             .select_from(RewardLedger)
             .join(DailyTask, RewardLedger.daily_task_id == DailyTask.id)
             .where(
-                RewardLedger.entry_type == "earn",
                 DailyTask.date == target_date,
                 RewardLedger.user_id == user.id,
             )

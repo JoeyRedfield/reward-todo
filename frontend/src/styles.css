@@ -749,6 +749,14 @@ a:focus-visible {
   align-items: start;
 }
 
+.task-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .task-name {
   font-size: 18px;
   font-weight: 700;

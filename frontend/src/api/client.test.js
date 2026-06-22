@@ -3,6 +3,7 @@ import {
   changePassword,
   fetchCurrentUser,
   login,
+  reopenDailyTask,
   setUnauthorizedHandler,
 } from "./client";
 
@@ -69,4 +70,22 @@ test("does not trigger unauthorized handler for login failures", async () => {
   ).rejects.toThrow("Invalid username or password");
 
   expect(unauthorized).not.toHaveBeenCalled();
+});
+
+test("reopens a completed task with POST request", async () => {
+  fetchMock.mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ id: 1, status: "pending" }),
+  });
+
+  await reopenDailyTask(1);
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "/api/daily-tasks/1/reopen",
+    expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+    })
+  );
 });

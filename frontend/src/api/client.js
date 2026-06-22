@@ -144,6 +144,12 @@ export async function completeDailyTask(taskId, actualDurationMinutes) {
   });
 }
 
+export async function reopenDailyTask(taskId) {
+  return request(`/daily-tasks/${taskId}/reopen`, {
+    method: "POST",
+  });
+}
+
 export async function fetchRewardSummary() {
   return request("/rewards/summary");
 }
