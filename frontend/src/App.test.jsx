@@ -28,6 +28,13 @@ const apiMocks = vi.hoisted(() => ({
   createDailyTaskMock: vi.fn(),
   fetchRewardLedgerMock: vi.fn(),
   spendRewardMock: vi.fn(),
+  fetchAccountProfileMock: vi.fn(),
+  fetchAccountSessionsMock: vi.fn(),
+  revokeAccountSessionMock: vi.fn(),
+  revokeOtherAccountSessionsMock: vi.fn(),
+  fetchAccessTokensMock: vi.fn(),
+  createAccessTokenMock: vi.fn(),
+  revokeAccessTokenMock: vi.fn(),
 }));
 
 vi.mock("./api/client", () => ({
@@ -48,6 +55,13 @@ vi.mock("./api/client", () => ({
   createDailyTask: apiMocks.createDailyTaskMock,
   fetchRewardLedger: apiMocks.fetchRewardLedgerMock,
   spendReward: apiMocks.spendRewardMock,
+  fetchAccountProfile: apiMocks.fetchAccountProfileMock,
+  fetchAccountSessions: apiMocks.fetchAccountSessionsMock,
+  revokeAccountSession: apiMocks.revokeAccountSessionMock,
+  revokeOtherAccountSessions: apiMocks.revokeOtherAccountSessionsMock,
+  fetchAccessTokens: apiMocks.fetchAccessTokensMock,
+  createAccessToken: apiMocks.createAccessTokenMock,
+  revokeAccessToken: apiMocks.revokeAccessTokenMock,
   getErrorMessage: (error, fallback) => error?.message || fallback,
 }));
 
@@ -127,6 +141,42 @@ beforeEach(() => {
   apiMocks.createDailyTaskMock.mockResolvedValue({ id: 3 });
   apiMocks.fetchRewardLedgerMock.mockResolvedValue([]);
   apiMocks.spendRewardMock.mockResolvedValue({ id: 4 });
+  apiMocks.fetchAccountProfileMock.mockResolvedValue({
+    id: 1,
+    username: "reward",
+    created_at: "2026-06-22T00:00:00Z",
+    password_changed_at: "2026-06-22T00:00:00Z",
+    last_login_at: "2026-06-22T01:00:00Z",
+    api_token_enabled: true,
+    mcp_enabled: true,
+  });
+  apiMocks.fetchAccountSessionsMock.mockResolvedValue({
+    items: [
+      {
+        id: 1,
+        created_at: "2026-06-22T00:00:00Z",
+        expires_at: "2026-06-29T00:00:00Z",
+        last_seen_at: "2026-06-22T01:00:00Z",
+        is_current: true,
+      },
+    ],
+  });
+  apiMocks.revokeAccountSessionMock.mockResolvedValue(null);
+  apiMocks.revokeOtherAccountSessionsMock.mockResolvedValue(null);
+  apiMocks.fetchAccessTokensMock.mockResolvedValue({
+    items: [],
+  });
+  apiMocks.createAccessTokenMock.mockResolvedValue({
+    id: 9,
+    name: "Claude Desktop",
+    token_type: "mcp",
+    token: "mcp-secret-token",
+    created_at: "2026-06-22T02:00:00Z",
+    expires_at: "2026-07-22T02:00:00Z",
+    api_base_url: null,
+    mcp_url: "http://localhost:8088/mcp",
+  });
+  apiMocks.revokeAccessTokenMock.mockResolvedValue(null);
 });
 
 test("redirects unauthenticated users to login", async () => {
@@ -180,8 +230,16 @@ test("moves signup flow to next step after submitting basic info", async () => {
       confirm_password: "super-secret",
       create_default_workspace: true,
     });
-    expect(screen.getByText("账号已创建")).toBeInTheDocument();
+    expect(screen.getByText("今天还没有安排任务。")).toBeInTheDocument();
   });
+});
+
+test("redirects authenticated users away from signup", async () => {
+  authState.currentUser = authState.loginResult;
+
+  renderAt("/signup");
+
+  expect(await screen.findByText("今天还没有安排任务。")).toBeInTheDocument();
 });
 
 test("redirects back to requested page after login", async () => {
@@ -207,7 +265,7 @@ test("shows account actions in sidebar", async () => {
   renderAt("/today");
 
   expect(await screen.findByText("reward")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "修改密码" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "账号设置" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "登出" })).toBeInTheDocument();
 });
 
@@ -228,11 +286,10 @@ test("logs out from sidebar account panel", async () => {
 test("shows password change success feedback", async () => {
   authState.currentUser = authState.loginResult;
 
-  renderAt("/today");
+  renderAt("/account");
 
-  await screen.findByText("reward");
-  fireEvent.click(screen.getByRole("button", { name: "修改密码" }));
-  fireEvent.change(screen.getByLabelText("当前密码"), {
+  await screen.findByText("账号资料");
+  fireEvent.change(screen.getAllByLabelText("当前密码")[0], {
     target: { value: "super-secret" },
   });
   fireEvent.change(screen.getByLabelText("新密码"), {
@@ -252,11 +309,10 @@ test("shows password change error feedback", async () => {
   authState.currentUser = authState.loginResult;
   authState.changePasswordError = new Error("当前密码错误");
 
-  renderAt("/today");
+  renderAt("/account");
 
-  await screen.findByText("reward");
-  fireEvent.click(screen.getByRole("button", { name: "修改密码" }));
-  fireEvent.change(screen.getByLabelText("当前密码"), {
+  await screen.findByText("账号资料");
+  fireEvent.change(screen.getAllByLabelText("当前密码")[0], {
     target: { value: "wrong-pass" },
   });
   fireEvent.change(screen.getByLabelText("新密码"), {
@@ -269,5 +325,37 @@ test("shows password change error feedback", async () => {
 
   await waitFor(() => {
     expect(screen.getByText("当前密码错误")).toBeInTheDocument();
+  });
+});
+
+test("renders account settings page and creates mcp token", async () => {
+  authState.currentUser = authState.loginResult;
+
+  renderAt("/account");
+
+  expect(await screen.findByText("账号资料")).toBeInTheDocument();
+  expect(screen.getByText("用户名")).toBeInTheDocument();
+  expect(screen.getByText("当前会话")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("Token 名称"), {
+    target: { value: "Claude Desktop" },
+  });
+  fireEvent.change(screen.getByLabelText("Token 类型"), {
+    target: { value: "mcp" },
+  });
+  fireEvent.change(screen.getAllByLabelText("当前密码")[1], {
+    target: { value: "super-secret" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "生成 Token" }));
+
+  await waitFor(() => {
+    expect(apiMocks.createAccessTokenMock).toHaveBeenCalledWith({
+      name: "Claude Desktop",
+      token_type: "mcp",
+      password: "super-secret",
+      expires_in_seconds: 2592000,
+    });
+    expect(screen.getByDisplayValue("mcp-secret-token")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("http://localhost:8088/mcp")).toBeInTheDocument();
   });
 });

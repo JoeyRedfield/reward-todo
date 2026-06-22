@@ -11,6 +11,16 @@ function getErrorMessage(error, fallback) {
   return fallback;
 }
 
+const UNAUTHORIZED_HANDLER_EXCLUDED_PATHS = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/auth/change-password",
+]);
+
+function shouldNotifyUnauthorized(path) {
+  return !UNAUTHORIZED_HANDLER_EXCLUDED_PATHS.has(path);
+}
+
 async function request(path, options) {
   const response = await fetch(`/api${path}`, {
     credentials: "include",
@@ -31,7 +41,7 @@ async function request(path, options) {
   if (
     response.status === 401 &&
     unauthorizedHandler &&
-    payload?.detail === "Authentication required"
+    shouldNotifyUnauthorized(path)
   ) {
     unauthorizedHandler();
   }
@@ -79,6 +89,43 @@ export async function changePassword(payload) {
   return request("/auth/change-password", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchAccountProfile() {
+  return request("/account/profile");
+}
+
+export async function fetchAccountSessions() {
+  return request("/account/sessions");
+}
+
+export async function revokeAccountSession(sessionId) {
+  return request(`/account/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function revokeOtherAccountSessions() {
+  return request("/account/sessions", {
+    method: "DELETE",
+  });
+}
+
+export async function fetchAccessTokens() {
+  return request("/account/tokens");
+}
+
+export async function createAccessToken(payload) {
+  return request("/account/tokens", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function revokeAccessToken(tokenId) {
+  return request(`/account/tokens/${tokenId}`, {
+    method: "DELETE",
   });
 }
 

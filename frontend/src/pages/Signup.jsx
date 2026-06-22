@@ -7,7 +7,6 @@ const TOTAL_STEPS = 2;
 export default function SignupPage() {
   const { register, loading, user } = useAuth();
   const [step, setStep] = useState(1);
-  const [completed, setCompleted] = useState(false);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -21,7 +20,7 @@ export default function SignupPage() {
     return <div className="loading-card auth-loading">加载中...</div>;
   }
 
-  if (user && !completed) {
+  if (user) {
     return <Navigate replace to="/today" />;
   }
 
@@ -65,7 +64,6 @@ export default function SignupPage() {
         confirm_password: confirmPassword,
         create_default_workspace: createDefaultWorkspace,
       });
-      setCompleted(true);
     } catch (submitError) {
       setError(submitError.message || "创建账号失败");
     } finally {
@@ -85,12 +83,7 @@ export default function SignupPage() {
         </div>
         <div className="auth-card">
           <p>步骤 {step} / {TOTAL_STEPS}</p>
-          {completed ? (
-            <div>
-              <h2>账号已创建</h2>
-              <p>注册已提交成功，正在进入你的工作台。</p>
-            </div>
-          ) : step === 1 ? (
+          {step === 1 ? (
             <form onSubmit={handleContinue}>
               {error ? <div className="error-banner">{error}</div> : null}
               <label>
