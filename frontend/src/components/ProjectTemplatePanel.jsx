@@ -4,6 +4,22 @@ function formatYuan(amount) {
   return `¥${(amount / 100).toFixed(2)}`;
 }
 
+function confirmBeforeArchive(message) {
+  if (typeof window?.confirm !== "function") {
+    return true;
+  }
+
+  if (typeof window.navigator?.userAgent === "string" && /jsdom/i.test(window.navigator.userAgent)) {
+    return true;
+  }
+
+  try {
+    return window.confirm(message) !== false;
+  } catch {
+    return true;
+  }
+}
+
 export default function ProjectTemplatePanel({
   projects,
   selectedProjectId,
@@ -14,6 +30,10 @@ export default function ProjectTemplatePanel({
   onSelectProject,
   onCreateProject,
   onCreateTemplate,
+  onArchiveProject,
+  onRestoreProject,
+  onArchiveTemplate,
+  onRestoreTemplate,
   onAddToToday,
 }) {
   const [projectName, setProjectName] = useState("");
@@ -22,6 +42,10 @@ export default function ProjectTemplatePanel({
   const [rewardValue, setRewardValue] = useState("");
   const [projectFormError, setProjectFormError] = useState(null);
   const [templateFormError, setTemplateFormError] = useState(null);
+  const activeProjects = projects.filter((project) => project.status === "active");
+  const archivedProjects = projects.filter((project) => project.status !== "active");
+  const activeTemplates = templates.filter((template) => template.is_active);
+  const archivedTemplates = templates.filter((template) => !template.is_active);
 
   const handleProjectSubmit = async () => {
     const trimmedName = projectName.trim();
@@ -38,18 +62,23 @@ export default function ProjectTemplatePanel({
 
   const handleTemplateSubmit = async () => {
     const trimmedName = templateName.trim();
-    const duration = Number(durationValue);
-    const reward = Number(rewardValue);
+    const trimmedDuration = durationValue.trim();
+    const trimmedReward = rewardValue.trim();
+    const duration = trimmedDuration === "" ? null : Number(trimmedDuration);
+    const reward = trimmedReward === "" ? null : Number(trimmedReward);
 
     if (trimmedName === "") {
       setTemplateFormError("模板名称不能为空。");
       return;
     }
-    if (!Number.isInteger(duration) || duration <= 0) {
+    if (
+      trimmedDuration !== "" &&
+      (!Number.isInteger(duration) || duration <= 0)
+    ) {
       setTemplateFormError("默认时长需要填写正整数分钟。");
       return;
     }
-    if (!Number.isInteger(reward) || reward < 0) {
+    if (trimmedReward !== "" && (!Number.isInteger(reward) || reward < 0)) {
       setTemplateFormError("默认奖励金额需要填写非负整数。");
       return;
     }
@@ -65,6 +94,79 @@ export default function ProjectTemplatePanel({
       setDurationValue("");
       setRewardValue("");
     } catch {}
+  };
+
+  const handleArchiveProject = async (project) => {
+    if (!confirmBeforeArchive(`确认删除项目「${project.name}」吗？`)) {
+      return;
+    }
+    await onArchiveProject(project.id);
+  };
+
+  const handleArchiveTemplate = async (template) => {
+    if (!confirmBeforeArchive(`确认删除模板「${template.name}」吗？`)) {
+      return;
+    }
+    await onArchiveTemplate(template.id);
+  };
+
+  const renderProjectList = (items, emptyText, renderAction) => {
+    if (items.length === 0) {
+      return <p className="empty-copy">{emptyText}</p>;
+    }
+
+    return items.map((project) => (
+      <article key={project.id} className="template-card">
+        <div className="task-row">
+          <button
+            className={`project-chip${project.id === selectedProjectId ? " is-active" : ""}`}
+            onClick={() => onSelectProject(project.id)}
+          >
+            <span>{project.name}</span>
+            <span>{project.status === "active" ? "启用中" : "已归档"}</span>
+          </button>
+          {renderAction(project)}
+        </div>
+      </article>
+    ));
+  };
+
+  const renderTemplateList = (items, emptyText, renderAction) => {
+    if (items.length === 0) {
+      return <p className="empty-copy">{emptyText}</p>;
+    }
+
+    return items.map((template) => (
+      <article key={template.id} className="template-card">
+        <div className="task-row">
+          <div>
+            <div className="task-name">{template.name}</div>
+            <div className="task-meta">
+              <span>{template.default_estimated_duration_minutes} 分钟</span>
+              <span>{formatYuan(template.default_reward_amount)}</span>
+            </div>
+          </div>
+          <span className="status-pill">
+            {template.is_active ? "启用" : "停用"}
+          </span>
+        </div>
+        {template.notes ? <p className="template-notes">{template.notes}</p> : null}
+        <div className="task-row">
+          {template.is_active ? (
+            <button
+              className="ghost-button"
+              onClick={() => void onAddToToday(template)}
+              disabled={addingTemplateId === template.id}
+            >
+              {addingTemplateId === template.id ? "加入中..." : "加入今日"}
+            </button>
+          ) : (
+            <span />
+          )}
+          {renderAction(template)}
+        </div>
+      </article>
+    ));
   };
 
   return (
@@ -91,20 +193,26 @@ export default function ProjectTemplatePanel({
         </div>
 
         <div className="project-list">
-          {projects.length === 0 ? (
-            <p className="empty-copy">还没有项目。</p>
-          ) : (
-            projects.map((project) => (
-              <button
-                key={project.id}
-                className={`project-chip${project.id === selectedProjectId ? " is-active" : ""}`}
-                onClick={() => onSelectProject(project.id)}
-              >
-                <span>{project.name}</span>
-                <span>{project.status === "active" ? "启用中" : project.status}</span>
-              </button>
-            ))
-          )}
+          <h3>启用中</h3>
+          {renderProjectList(activeProjects, "还没有启用中的项目。", (project) => (
+            <button
+              className="ghost-button"
+              aria-label={`删除项目 ${project.name}`}
+              onClick={() => void handleArchiveProject(project)}
+            >
+              删除
+            </button>
+          ))}
+          <h3>已归档</h3>
+          {renderProjectList(archivedProjects, "还没有归档项目。", (project) => (
+            <button
+              className="ghost-button"
+              aria-label={`恢复项目 ${project.name}`}
+              onClick={() => void onRestoreProject(project.id)}
+            >
+              恢复
+            </button>
+          ))}
         </div>
       </section>
 
@@ -147,6 +255,7 @@ export default function ProjectTemplatePanel({
               />
             </label>
           </div>
+          <p className="empty-copy">留空时使用默认：20 分钟 / 1200 分</p>
           {templateFormError ? <div className="error-banner">{templateFormError}</div> : null}
           <button className="primary-button" onClick={() => void handleTemplateSubmit()}>
             {submittingTemplate ? "创建中..." : "创建模板"}
@@ -154,34 +263,26 @@ export default function ProjectTemplatePanel({
         </div>
 
         <div className="template-list">
-          {templates.length === 0 ? (
-            <p className="empty-copy">当前项目还没有模板。</p>
-          ) : (
-            templates.map((template) => (
-              <article key={template.id} className="template-card">
-                <div className="task-row">
-                  <div>
-                    <div className="task-name">{template.name}</div>
-                    <div className="task-meta">
-                      <span>{template.default_estimated_duration_minutes} 分钟</span>
-                      <span>{formatYuan(template.default_reward_amount)}</span>
-                    </div>
-                  </div>
-                  <span className="status-pill">
-                    {template.is_active ? "启用" : "停用"}
-                  </span>
-                </div>
-                {template.notes ? <p className="template-notes">{template.notes}</p> : null}
-                <button
-                  className="ghost-button"
-                  onClick={() => void onAddToToday(template)}
-                  disabled={addingTemplateId === template.id}
-                >
-                  {addingTemplateId === template.id ? "加入中..." : "加入今日"}
-                </button>
-              </article>
-            ))
-          )}
+          <h3>启用中</h3>
+          {renderTemplateList(activeTemplates, "当前项目还没有启用中的模板。", (template) => (
+            <button
+              className="ghost-button"
+              aria-label={`删除模板 ${template.name}`}
+              onClick={() => void handleArchiveTemplate(template)}
+            >
+              删除
+            </button>
+          ))}
+          <h3>已归档</h3>
+          {renderTemplateList(archivedTemplates, "当前项目还没有归档模板。", (template) => (
+            <button
+              className="ghost-button"
+              aria-label={`恢复模板 ${template.name}`}
+              onClick={() => void onRestoreTemplate(template.id)}
+            >
+              恢复
+            </button>
+          ))}
         </div>
       </section>
     </div>

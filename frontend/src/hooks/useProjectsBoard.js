@@ -6,8 +6,33 @@ import {
   fetchProjects,
   fetchTaskTemplates,
   getErrorMessage,
+  updateProject,
+  updateTaskTemplate,
 } from "../api/client";
 import { formatLocalDate } from "../utils/date";
+
+const DEFAULT_TEMPLATE_DURATION_MINUTES = 20;
+const DEFAULT_TEMPLATE_REWARD_AMOUNT = 1200;
+
+function getActiveProjects(projects) {
+  return projects.filter((project) => project.status === "active");
+}
+
+function pickSelectedProjectId(projects, preferredProjectId = null) {
+  const activeProjects = getActiveProjects(projects);
+  if (activeProjects.length === 0) {
+    return null;
+  }
+
+  if (
+    preferredProjectId !== null &&
+    activeProjects.some((project) => project.id === preferredProjectId)
+  ) {
+    return preferredProjectId;
+  }
+
+  return activeProjects[0].id;
+}
 
 export default function useProjectsBoard() {
   const [projects, setProjects] = useState([]);
@@ -26,7 +51,7 @@ export default function useProjectsBoard() {
     try {
       const projectsData = await fetchProjects();
       setProjects(projectsData);
-      const initialProjectId = projectsData[0]?.id ?? null;
+      const initialProjectId = pickSelectedProjectId(projectsData);
       setSelectedProjectId(initialProjectId);
       if (initialProjectId === null) {
         setTemplates([]);
@@ -84,11 +109,16 @@ export default function useProjectsBoard() {
     setError(null);
     setSuccessMessage(null);
     try {
+      const durationMinutes =
+        payload.defaultEstimatedDurationMinutes ?? DEFAULT_TEMPLATE_DURATION_MINUTES;
+      const rewardAmount =
+        payload.defaultRewardAmount ?? DEFAULT_TEMPLATE_REWARD_AMOUNT;
+
       await createTaskTemplate({
         project_id: selectedProjectId,
         name: payload.name,
-        default_estimated_duration_minutes: payload.defaultEstimatedDurationMinutes,
-        default_reward_amount: payload.defaultRewardAmount,
+        default_estimated_duration_minutes: durationMinutes,
+        default_reward_amount: rewardAmount,
         notes: "",
         is_active: true,
       });
@@ -122,6 +152,83 @@ export default function useProjectsBoard() {
     }
   }, []);
 
+  const archiveProject = useCallback(async (projectId) => {
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await updateProject(projectId, { status: "archived" });
+      const projectsData = await fetchProjects();
+      const nextProjectId = pickSelectedProjectId(projectsData, selectedProjectId);
+      setProjects(projectsData);
+      setSelectedProjectId(nextProjectId);
+      if (nextProjectId === null) {
+        setTemplates([]);
+      } else {
+        setTemplates(await fetchTaskTemplates(nextProjectId));
+      }
+      setSuccessMessage("项目已删除。");
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, "删除项目失败，请稍后重试。"));
+      throw submitError;
+    }
+  }, [selectedProjectId]);
+
+  const restoreProject = useCallback(async (projectId) => {
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await updateProject(projectId, { status: "active" });
+      const projectsData = await fetchProjects();
+      const nextProjectId = pickSelectedProjectId(projectsData, selectedProjectId);
+      setProjects(projectsData);
+      if (nextProjectId === null) {
+        setSelectedProjectId(null);
+        setTemplates([]);
+      } else if (nextProjectId !== selectedProjectId) {
+        setSelectedProjectId(nextProjectId);
+        setTemplates(await fetchTaskTemplates(nextProjectId));
+      }
+      setSuccessMessage("项目已恢复。");
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, "恢复项目失败，请稍后重试。"));
+      throw submitError;
+    }
+  }, [selectedProjectId]);
+
+  const archiveTemplate = useCallback(async (templateId) => {
+    if (selectedProjectId === null) {
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await updateTaskTemplate(templateId, { is_active: false });
+      setTemplates(await fetchTaskTemplates(selectedProjectId));
+      setSuccessMessage("模板已删除。");
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, "删除模板失败，请稍后重试。"));
+      throw submitError;
+    }
+  }, [selectedProjectId]);
+
+  const restoreTemplate = useCallback(async (templateId) => {
+    if (selectedProjectId === null) {
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      await updateTaskTemplate(templateId, { is_active: true });
+      setTemplates(await fetchTaskTemplates(selectedProjectId));
+      setSuccessMessage("模板已恢复。");
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, "恢复模板失败，请稍后重试。"));
+      throw submitError;
+    }
+  }, [selectedProjectId]);
+
   return {
     projects,
     selectedProjectId,
@@ -135,6 +242,10 @@ export default function useProjectsBoard() {
     selectProject,
     submitProject,
     submitTemplate,
+    archiveProject,
+    restoreProject,
+    archiveTemplate,
+    restoreTemplate,
     addTemplateToToday,
     reload: loadBoard,
   };

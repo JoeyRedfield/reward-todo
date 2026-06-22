@@ -34,6 +34,10 @@ export default function ProjectsPage() {
             onSelectProject={board.selectProject}
             onCreateProject={board.submitProject}
             onCreateTemplate={board.submitTemplate}
+            onArchiveProject={board.archiveProject}
+            onRestoreProject={board.restoreProject}
+            onArchiveTemplate={board.archiveTemplate}
+            onRestoreTemplate={board.restoreTemplate}
             onAddToToday={board.addTemplateToToday}
           />
         </>

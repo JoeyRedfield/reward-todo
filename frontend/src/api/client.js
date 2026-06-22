@@ -192,6 +192,13 @@ export async function createTaskTemplate(payload) {
   });
 }
 
+export async function updateTaskTemplate(templateId, payload) {
+  return request(`/task-templates/${templateId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createDailyTask(payload) {
   return request("/daily-tasks", {
     method: "POST",
