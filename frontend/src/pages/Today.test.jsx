@@ -75,6 +75,16 @@ const calendarSummary = [
   { date: "2026-06-23", task_count: 1, completed_count: 1 },
 ];
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
 const {
   completeDailyTaskMock,
   createDailyTaskMock,
@@ -208,6 +218,61 @@ test("completes a task and refreshes board", async () => {
 
   await waitFor(() => {
     expect(screen.getByText("已完成")).toBeInTheDocument();
+  });
+});
+
+test("keeps the newly selected date when a pending completion finishes later", async () => {
+  const finishRequest = createDeferred();
+  let initialTodayLoad = true;
+  completeDailyTaskMock.mockReturnValue(finishRequest.promise);
+  fetchDailyTasksMock.mockImplementation(async (date) => {
+    if (date === "2026-06-21") {
+      if (initialTodayLoad) {
+        initialTodayLoad = false;
+        return [task];
+      }
+      return [completedTask];
+    }
+
+    if (date === "2026-06-22") {
+      return [];
+    }
+
+    return [];
+  });
+  fetchRewardSummaryMock.mockImplementation(async (date) => {
+    if (date === "2026-06-21") {
+      return initialTodayLoad
+        ? { current_balance: 0, today_earned: 0 }
+        : { current_balance: 2000, today_earned: 2000 };
+    }
+
+    return { current_balance: 0, today_earned: 0 };
+  });
+
+  render(<TodayPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "完成" }));
+  fireEvent.change(screen.getByPlaceholderText("选填，单位分钟"), {
+    target: { value: "28" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "确认完成" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择 2026-06-22" }));
+
+  await waitFor(() => {
+    expect(fetchDailyTasksMock).toHaveBeenLastCalledWith("2026-06-22");
+    expect(screen.getByText("2026-06-22 还没有安排任务。")).toBeInTheDocument();
+  });
+
+  finishRequest.resolve(completedTask);
+
+  await waitFor(() => {
+    expect(completeDailyTaskMock).toHaveBeenCalledWith(1, 28);
+    expect(fetchDailyTasksMock.mock.calls.slice(1).every(([date]) => date !== "2026-06-21")).toBe(
+      true
+    );
+    expect(screen.getByText("2026-06-22 还没有安排任务。")).toBeInTheDocument();
+    expect(screen.queryByText("实际时长 28 分钟")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤销完成" })).not.toBeInTheDocument();
   });
 });
 

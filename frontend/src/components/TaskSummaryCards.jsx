@@ -36,7 +36,7 @@ export default function TaskSummaryCards({ summary, tasks }) {
       tone: "ink",
       label: "预计总时长",
       value: `${totalMinutes} 分钟`,
-      hint: "来自今日任务快照",
+      hint: "来自当前选中日期的任务快照",
     },
   ];
 
