@@ -15,7 +15,7 @@ from sqlalchemy.exc import PendingRollbackError
 from app.config import get_settings
 from app.dependencies import get_auth_service
 from app.main import create_app
-from app.models import SessionRecord, TaskProject, TaskTemplate, User
+from app.models import AccessToken, SessionRecord, TaskProject, TaskTemplate, User
 from app.security import hash_password, verify_password
 from app.services.auth_service import AuthService
 from scripts.bootstrap_alembic import detect_legacy_revision
@@ -1179,6 +1179,208 @@ def test_account_profile_returns_display_name_and_email(client):
     assert payload["email"] == "reward@local.invalid"
     assert payload["api_token_enabled"] is True
     assert payload["mcp_enabled"] is True
+
+
+def test_account_sessions_marks_current_session_and_can_revoke_others(client):
+    first_login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert first_login_response.status_code == 200
+
+    cookie_name = get_settings().auth_session_cookie_name
+    current_session_token = client.cookies.get(cookie_name)
+    assert current_session_token
+
+    second_client = client.__class__(client.app)
+    second_login_response = second_client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert second_login_response.status_code == 200
+
+    sessions_response = client.get("/api/account/sessions")
+
+    assert sessions_response.status_code == 200
+    sessions_payload = sessions_response.json()["items"]
+    assert len(sessions_payload) == 2
+    assert [item["is_current"] for item in sessions_payload] == [False, True]
+    assert all(item["created_at"] for item in sessions_payload)
+    assert all(item["expires_at"] for item in sessions_payload)
+    assert all(item["last_seen_at"] for item in sessions_payload)
+
+    revoke_response = client.delete("/api/account/sessions")
+    assert revoke_response.status_code == 204
+
+    sessions_after_revoke = client.get("/api/account/sessions")
+    assert sessions_after_revoke.status_code == 200
+    remaining_sessions = sessions_after_revoke.json()["items"]
+    assert len(remaining_sessions) == 1
+    assert remaining_sessions[0]["id"] == sessions_payload[1]["id"]
+    assert remaining_sessions[0]["created_at"] == sessions_payload[1]["created_at"]
+    assert remaining_sessions[0]["expires_at"] == sessions_payload[1]["expires_at"]
+    assert remaining_sessions[0]["last_seen_at"]
+    assert remaining_sessions[0]["is_current"] is True
+
+    stale_session_response = second_client.get("/api/auth/me")
+    assert stale_session_response.status_code == 401
+    assert stale_session_response.json() == {"detail": "Authentication required"}
+
+
+def test_account_tokens_create_api_token_matches_frontend_contract(client):
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    create_response = client.post(
+        "/api/account/tokens",
+        json={
+            "name": "Codex Agent",
+            "token_type": "api",
+            "password": "super-secret",
+            "expires_in_seconds": 7200,
+        },
+    )
+
+    assert create_response.status_code == 201
+    payload = create_response.json()
+    assert payload["name"] == "Codex Agent"
+    assert payload["token_type"] == "api"
+    assert payload["token"]
+    assert payload["created_at"]
+    assert payload["expires_at"]
+    assert payload["api_base_url"] == "http://localhost:8088/api"
+    assert payload["mcp_url"] is None
+
+    list_response = client.get("/api/account/tokens")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == [
+        {
+            "id": payload["id"],
+            "name": "Codex Agent",
+            "token_type": "api",
+            "created_at": payload["created_at"],
+            "expires_at": payload["expires_at"],
+            "last_seen_at": None,
+        }
+    ]
+
+    token_only_client = client.__class__(client.app)
+    project_response = token_only_client.get(
+        "/api/task-projects",
+        headers={"Authorization": f"Bearer {payload['token']}"},
+    )
+    assert project_response.status_code == 200
+
+    refreshed_tokens = client.get("/api/account/tokens")
+    assert refreshed_tokens.status_code == 200
+    refreshed_payload = refreshed_tokens.json()["items"]
+    assert len(refreshed_payload) == 1
+    assert refreshed_payload[0]["last_seen_at"] is not None
+
+
+def test_account_tokens_create_mcp_token_matches_frontend_contract(client):
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    create_response = client.post(
+        "/api/account/tokens",
+        json={
+            "name": "Claude Desktop",
+            "token_type": "mcp",
+            "password": "super-secret",
+            "expires_in_seconds": 0,
+        },
+    )
+
+    assert create_response.status_code == 201
+    payload = create_response.json()
+    assert payload["name"] == "Claude Desktop"
+    assert payload["token_type"] == "mcp"
+    assert payload["token"]
+    assert payload["created_at"]
+    assert payload["expires_at"] is None
+    assert payload["api_base_url"] is None
+    assert payload["mcp_url"] == "http://localhost:8088/mcp"
+
+    list_response = client.get("/api/account/tokens")
+    assert list_response.status_code == 200
+    assert list_response.json()["items"] == [
+        {
+            "id": payload["id"],
+            "name": "Claude Desktop",
+            "token_type": "mcp",
+            "created_at": payload["created_at"],
+            "expires_at": None,
+            "last_seen_at": None,
+        }
+    ]
+
+
+def test_account_token_capabilities_respect_server_flags(client, monkeypatch):
+    monkeypatch.setenv("AUTH_ENABLE_API_TOKENS", "false")
+    monkeypatch.setenv("AUTH_ENABLE_MCP", "false")
+    get_settings.cache_clear()
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    profile_response = client.get("/api/account/profile")
+    assert profile_response.status_code == 200
+    profile_payload = profile_response.json()
+    assert profile_payload["api_token_enabled"] is False
+    assert profile_payload["mcp_enabled"] is False
+
+    api_token_response = client.post(
+        "/api/account/tokens",
+        json={
+            "name": "Disabled API Token",
+            "token_type": "api",
+            "password": "super-secret",
+            "expires_in_seconds": 3600,
+        },
+    )
+    assert api_token_response.status_code == 403
+    assert api_token_response.json() == {"detail": "api token is not enabled"}
+
+    mcp_token_response = client.post(
+        "/api/account/tokens",
+        json={
+            "name": "Disabled MCP Token",
+            "token_type": "mcp",
+            "password": "super-secret",
+            "expires_in_seconds": 3600,
+        },
+    )
+    assert mcp_token_response.status_code == 400
+    assert mcp_token_response.json() == {"detail": "mcp server is not enabled"}
+
+
+def test_access_token_model_supports_non_expiring_tokens(db_session):
+    service = AuthService(db_session)
+    user = service.ensure_initial_user("reward", "super-secret")
+
+    raw_token, token_record = service.create_access_token(
+        user,
+        name="Never Expire API",
+        token_type="api",
+        expires_in_seconds=0,
+    )
+
+    assert raw_token
+    assert token_record.expires_at is None
+
+    persisted_record = db_session.get(AccessToken, token_record.id)
+    assert persisted_record is not None
+    assert persisted_record.expires_at is None
 
 
 def test_change_password_rotates_sessions(client):
