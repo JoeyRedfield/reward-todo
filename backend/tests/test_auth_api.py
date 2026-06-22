@@ -7,14 +7,16 @@ from http.cookies import SimpleCookie
 from types import MethodType
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import PendingRollbackError
 
 from app.config import get_settings
 from app.dependencies import get_auth_service
+from app.main import create_app
 from app.models import SessionRecord, TaskProject, TaskTemplate, User
-from app.security import verify_password
+from app.security import hash_password, verify_password
 from app.services.auth_service import AuthService
 
 
@@ -284,6 +286,168 @@ def test_auth_migrations_include_task_reward_user_ownership_columns(tmp_path, mo
         assert "user_id" in reward_ledger_columns
     finally:
         engine.dispose()
+
+
+def test_auth_migration_0005_backfills_existing_task_reward_data_to_bootstrap_user(tmp_path, monkeypatch):
+    database_path = tmp_path / "task_reward_user_backfill.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    _, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env["AUTH_INITIAL_USERNAME"] = "reward"
+    env["AUTH_INITIAL_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
+
+    _run_alembic(backend_dir, env, "upgrade", "0004_add_user_profile_and_registration_flag")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO users
+                    (username, display_name, email, password_hash, created_at, updated_at, password_changed_at)
+                VALUES
+                    (:username, :display_name, :email, :password_hash, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+                ,
+                {
+                    "username": "reward",
+                    "display_name": "reward",
+                    "email": "reward@local.invalid",
+                    "password_hash": hash_password("secret-pass"),
+                },
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO task_projects
+                    (id, name, status, sort_order, created_at, updated_at)
+                VALUES
+                    (1, 'Legacy Project', 'active', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO task_templates
+                    (id, project_id, name, default_estimated_duration_minutes, default_reward_amount, notes, is_active, created_at, updated_at)
+                VALUES
+                    (1, 1, 'Legacy Template', 30, 12, '', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO daily_tasks
+                    (id, date, project_id, task_template_id, name_snapshot, estimated_duration_minutes_snapshot,
+                     reward_amount_snapshot, status, actual_duration_minutes, completed_at, created_at, updated_at)
+                VALUES
+                    (1, '2026-06-20', 1, 1, 'Legacy Template', 30, 12, 'completed', 28, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO reward_ledger
+                    (id, entry_type, amount, reason, daily_task_id, created_at)
+                VALUES
+                    (1, 'earn', 12, 'Legacy Template', 1, CURRENT_TIMESTAMP)
+                """
+            )
+    finally:
+        engine.dispose()
+
+    _run_alembic(backend_dir, env, "upgrade", "head")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        inspector = inspect(engine)
+        task_project_user = next(
+            column for column in inspector.get_columns("task_projects") if column["name"] == "user_id"
+        )
+        daily_task_user = next(
+            column for column in inspector.get_columns("daily_tasks") if column["name"] == "user_id"
+        )
+        reward_ledger_user = next(
+            column for column in inspector.get_columns("reward_ledger") if column["name"] == "user_id"
+        )
+        assert task_project_user["nullable"] is False
+        assert daily_task_user["nullable"] is False
+        assert reward_ledger_user["nullable"] is False
+
+        with engine.connect() as connection:
+            row = connection.exec_driver_sql(
+                """
+                SELECT
+                    task_projects.user_id AS project_user_id,
+                    daily_tasks.user_id AS task_user_id,
+                    reward_ledger.user_id AS ledger_user_id
+                FROM task_projects
+                JOIN daily_tasks ON daily_tasks.project_id = task_projects.id
+                JOIN reward_ledger ON reward_ledger.daily_task_id = daily_tasks.id
+                WHERE task_projects.id = 1
+                """
+            ).mappings().one()
+
+        assert row["project_user_id"] == 1
+        assert row["task_user_id"] == 1
+        assert row["ledger_user_id"] == 1
+    finally:
+        engine.dispose()
+
+    monkeypatch.setenv("READONLY_TOKEN", "readonly-test-token")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+    get_settings.cache_clear()
+    app = create_app()
+
+    with TestClient(app) as client:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"username": "reward", "password": "secret-pass"},
+        )
+        assert login_response.status_code == 200
+
+        private_projects = client.get("/api/task-projects")
+        assert private_projects.status_code == 200
+        assert private_projects.json() == [
+            {
+                "id": 1,
+                "name": "Legacy Project",
+                "status": "active",
+                "sort_order": 0,
+            }
+        ]
+
+        public_projects = client.get(
+            "/api/public/projects",
+            headers={"Authorization": "Bearer readonly-test-token"},
+        )
+        assert public_projects.status_code == 200
+        assert public_projects.json()["items"] == [
+            {
+                "id": 1,
+                "name": "Legacy Project",
+                "status": "active",
+                "sort_order": 0,
+            }
+        ]
+
+        public_summary = client.get(
+            "/api/public/summary",
+            params={"date": "2026-06-20"},
+            headers={"Authorization": "Bearer readonly-test-token"},
+        )
+        assert public_summary.status_code == 200
+        assert public_summary.json() == {
+            "readOnly": True,
+            "current_balance": 12,
+            "today_earned": 12,
+        }
+
+    get_settings.cache_clear()
 
 
 def test_auth_migration_0003_downgrade_backfills_null_expiry(tmp_path, monkeypatch):
@@ -592,6 +756,34 @@ def test_register_rejects_when_registration_disabled(client, monkeypatch):
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Registration is disabled"}
+
+
+@pytest.mark.parametrize(
+    "email",
+    [
+        "missing-at.example.com",
+        "double@@example.com",
+        "space @example.com",
+        "name@example .com",
+        "name@\nexample.com",
+        "@example.com",
+        "name@",
+    ],
+)
+def test_register_rejects_invalid_email_addresses(client, email):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "bad-email-user",
+            "display_name": "Bad Email User",
+            "email": email,
+            "password": "good-pass1",
+            "confirm_password": "good-pass1",
+            "create_default_workspace": False,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_register_creates_default_workspace_only_for_new_user(client, db_session):

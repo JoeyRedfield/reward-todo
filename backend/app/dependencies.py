@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import User
+from app.security import normalize_username
 from app.services.auth_service import AuthService
 from app.services.task_reward_service import TaskRewardService
 
@@ -34,7 +35,7 @@ def get_bootstrap_user(
             detail="Bootstrap user is not configured",
         )
 
-    normalized_username = username.strip().lower()
+    normalized_username = normalize_username(username)
     candidate = service.session.scalar(select(User).where(User.username == normalized_username))
     if candidate is None:
         raise HTTPException(

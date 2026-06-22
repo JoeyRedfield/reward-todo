@@ -21,7 +21,14 @@ class RegisterRequest(BaseModel):
     @classmethod
     def validate_email(cls, value: str) -> str:
         normalized = value.strip()
-        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+        if any(character.isspace() for character in normalized):
+            raise ValueError("Invalid email address")
+        if normalized.count("@") != 1:
+            raise ValueError("Invalid email address")
+        local_part, domain = normalized.split("@", 1)
+        if not local_part or not domain:
+            raise ValueError("Invalid email address")
+        if "." not in domain or domain.startswith(".") or domain.endswith(".") or ".." in domain:
             raise ValueError("Invalid email address")
         return normalized
 

@@ -3,7 +3,9 @@ import datetime
 import hashlib
 import secrets
 from typing import Optional
+
 SESSION_TOKEN_BYTES = 32
+ACCESS_TOKEN_BYTES = 32
 
 
 def normalize_username(username: str) -> str:
@@ -26,6 +28,14 @@ def generate_session_token() -> str:
 
 
 def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_access_token() -> str:
+    return secrets.token_urlsafe(ACCESS_TOKEN_BYTES)
+
+
+def hash_access_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 

@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -70,6 +71,30 @@ def _resource_read_result(uri: str, payload):
             }
         ]
     }
+
+
+def _invalid_params(request_id, message: str):
+    return _jsonrpc_error(request_id, -32602, message)
+
+
+def _require_arguments(request_id, arguments: Any):
+    if not isinstance(arguments, dict):
+        return None, _invalid_params(request_id, "Invalid params: arguments must be an object")
+    return arguments, None
+
+
+def _parse_date_argument(request_id, value, field_name: str):
+    try:
+        return date.fromisoformat(value), None
+    except (TypeError, ValueError):
+        return None, _invalid_params(request_id, f"Invalid params: {field_name} must be a valid date")
+
+
+def _parse_int_argument(request_id, value, field_name: str):
+    try:
+        return int(value), None
+    except (TypeError, ValueError):
+        return None, _invalid_params(request_id, f"Invalid params: {field_name} must be an integer")
 
 
 @router.post("")
@@ -384,12 +409,17 @@ async def handle_mcp(
 
     if method == "tools/call":
         tool_name = params.get("name")
-        arguments = params.get("arguments") or {}
+        arguments, invalid_response = _require_arguments(request_id, params.get("arguments") or {})
+        if invalid_response is not None:
+            return invalid_response
 
         if tool_name == "get_reward_summary":
-            target_date = (
-                date.fromisoformat(arguments["date"]) if arguments.get("date") else date.today()
-            )
+            if arguments.get("date"):
+                target_date, invalid_response = _parse_date_argument(request_id, arguments["date"], "date")
+                if invalid_response is not None:
+                    return invalid_response
+            else:
+                target_date = date.today()
             result = RewardSummaryRead.model_validate(
                 service.get_reward_summary(target_date, user=_user)
             ).model_dump()
@@ -404,8 +434,10 @@ async def handle_mcp(
 
         if tool_name == "list_daily_tasks":
             if "date" not in arguments:
-                return _jsonrpc_error(request_id, -32602, "Missing required argument: date")
-            target_date = date.fromisoformat(arguments["date"])
+                return _invalid_params(request_id, "Missing required argument: date")
+            target_date, invalid_response = _parse_date_argument(request_id, arguments["date"], "date")
+            if invalid_response is not None:
+                return invalid_response
             result = [
                 DailyTaskRead.model_validate(item).model_dump()
                 for item in service.list_daily_tasks(target_date, user=_user)
@@ -414,17 +446,32 @@ async def handle_mcp(
 
         if tool_name == "list_task_templates":
             project_id = arguments.get("project_id")
+            parsed_project_id = None
+            if project_id is not None:
+                parsed_project_id, invalid_response = _parse_int_argument(
+                    request_id,
+                    project_id,
+                    "project_id",
+                )
+                if invalid_response is not None:
+                    return invalid_response
             result = [
                 TaskTemplateRead.model_validate(item).model_dump()
                 for item in service.list_templates(
-                    int(project_id) if project_id is not None else None,
+                    parsed_project_id,
                     user=_user,
                 )
             ]
             return _jsonrpc_result(request_id, _text_result(result))
 
         if tool_name == "list_reward_ledger":
-            limit = int(arguments.get("limit", 20))
+            limit, invalid_response = _parse_int_argument(
+                request_id,
+                arguments.get("limit", 20),
+                "limit",
+            )
+            if invalid_response is not None:
+                return invalid_response
             result = [
                 RewardLedgerRead.model_validate(item).model_dump()
                 for item in service.list_reward_ledger(limit, user=_user)
@@ -433,7 +480,7 @@ async def handle_mcp(
 
         if tool_name == "create_project":
             if not arguments.get("name"):
-                return _jsonrpc_error(request_id, -32602, "Missing required argument: name")
+                return _invalid_params(request_id, "Missing required argument: name")
             result = TaskProjectRead.model_validate(
                 service.create_project(arguments["name"], user=_user)
             ).model_dump()
@@ -441,19 +488,31 @@ async def handle_mcp(
 
         if tool_name == "update_project":
             if "project_id" not in arguments:
-                return _jsonrpc_error(
-                    request_id, -32602, "Missing required argument: project_id"
+                return _invalid_params(request_id, "Missing required argument: project_id")
+            project_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["project_id"],
+                "project_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            sort_order = None
+            if arguments.get("sort_order") is not None:
+                sort_order, invalid_response = _parse_int_argument(
+                    request_id,
+                    arguments["sort_order"],
+                    "sort_order",
                 )
+                if invalid_response is not None:
+                    return invalid_response
             changes = {
                 "name": arguments.get("name"),
                 "status": arguments.get("status"),
-                "sort_order": int(arguments["sort_order"])
-                if arguments.get("sort_order") is not None
-                else None,
+                "sort_order": sort_order,
             }
             try:
                 result = TaskProjectRead.model_validate(
-                    service.update_project(int(arguments["project_id"]), user=_user, **changes)
+                    service.update_project(project_id, user=_user, **changes)
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))
@@ -468,20 +527,38 @@ async def handle_mcp(
             ]
             missing = [field for field in required_fields if field not in arguments]
             if missing:
-                return _jsonrpc_error(
+                return _invalid_params(
                     request_id,
-                    -32602,
                     f"Missing required argument: {missing[0]}",
                 )
+            project_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["project_id"],
+                "project_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            duration_minutes, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["default_estimated_duration_minutes"],
+                "default_estimated_duration_minutes",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            reward_amount, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["default_reward_amount"],
+                "default_reward_amount",
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = TaskTemplateRead.model_validate(
                     service.create_task_template(
-                        project_id=int(arguments["project_id"]),
+                        project_id=project_id,
                         name=arguments["name"],
-                        default_estimated_duration_minutes=int(
-                            arguments["default_estimated_duration_minutes"]
-                        ),
-                        default_reward_amount=int(arguments["default_reward_amount"]),
+                        default_estimated_duration_minutes=duration_minutes,
+                        default_reward_amount=reward_amount,
                         user=_user,
                         notes=arguments.get("notes", ""),
                         is_active=bool(arguments.get("is_active", True)),
@@ -493,25 +570,42 @@ async def handle_mcp(
 
         if tool_name == "update_task_template":
             if "template_id" not in arguments:
-                return _jsonrpc_error(
-                    request_id, -32602, "Missing required argument: template_id"
+                return _invalid_params(request_id, "Missing required argument: template_id")
+            template_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["template_id"],
+                "template_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            duration_minutes = None
+            if arguments.get("default_estimated_duration_minutes") is not None:
+                duration_minutes, invalid_response = _parse_int_argument(
+                    request_id,
+                    arguments["default_estimated_duration_minutes"],
+                    "default_estimated_duration_minutes",
                 )
+                if invalid_response is not None:
+                    return invalid_response
+            reward_amount = None
+            if arguments.get("default_reward_amount") is not None:
+                reward_amount, invalid_response = _parse_int_argument(
+                    request_id,
+                    arguments["default_reward_amount"],
+                    "default_reward_amount",
+                )
+                if invalid_response is not None:
+                    return invalid_response
             changes = {
                 "name": arguments.get("name"),
-                "default_estimated_duration_minutes": int(
-                    arguments["default_estimated_duration_minutes"]
-                )
-                if arguments.get("default_estimated_duration_minutes") is not None
-                else None,
-                "default_reward_amount": int(arguments["default_reward_amount"])
-                if arguments.get("default_reward_amount") is not None
-                else None,
+                "default_estimated_duration_minutes": duration_minutes,
+                "default_reward_amount": reward_amount,
                 "notes": arguments.get("notes"),
                 "is_active": arguments.get("is_active"),
             }
             try:
                 result = TaskTemplateRead.model_validate(
-                    service.update_task_template(int(arguments["template_id"]), user=_user, **changes)
+                    service.update_task_template(template_id, user=_user, **changes)
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))
@@ -526,18 +620,41 @@ async def handle_mcp(
             ]
             missing = [field for field in required_fields if field not in arguments]
             if missing:
-                return _jsonrpc_error(
+                return _invalid_params(
                     request_id,
-                    -32602,
                     f"Missing required argument: {missing[0]}",
                 )
+            task_template_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["task_template_id"],
+                "task_template_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            target_date, invalid_response = _parse_date_argument(request_id, arguments["date"], "date")
+            if invalid_response is not None:
+                return invalid_response
+            estimated_duration, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["estimated_duration_minutes"],
+                "estimated_duration_minutes",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            reward_amount, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["reward_amount"],
+                "reward_amount",
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = DailyTaskRead.model_validate(
                     service.create_daily_task(
-                        task_template_id=int(arguments["task_template_id"]),
-                        date=date.fromisoformat(arguments["date"]),
-                        estimated_duration_minutes=int(arguments["estimated_duration_minutes"]),
-                        reward_amount=int(arguments["reward_amount"]),
+                        task_template_id=task_template_id,
+                        date=target_date,
+                        estimated_duration_minutes=estimated_duration,
+                        reward_amount=reward_amount,
                         user=_user,
                     )
                 ).model_dump()
@@ -547,15 +664,29 @@ async def handle_mcp(
 
         if tool_name == "complete_daily_task":
             if "task_id" not in arguments:
-                return _jsonrpc_error(request_id, -32602, "Missing required argument: task_id")
+                return _invalid_params(request_id, "Missing required argument: task_id")
+            task_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["task_id"],
+                "task_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            actual_duration = None
+            if arguments.get("actual_duration_minutes") is not None:
+                actual_duration, invalid_response = _parse_int_argument(
+                    request_id,
+                    arguments["actual_duration_minutes"],
+                    "actual_duration_minutes",
+                )
+                if invalid_response is not None:
+                    return invalid_response
             try:
                 result = DailyTaskRead.model_validate(
                     service.complete_daily_task(
-                        int(arguments["task_id"]),
+                        task_id,
                         user=_user,
-                        actual_duration_minutes=int(arguments["actual_duration_minutes"])
-                        if arguments.get("actual_duration_minutes") is not None
-                        else None,
+                        actual_duration_minutes=actual_duration,
                     )
                 ).model_dump()
             except ValueError as exc:
@@ -564,10 +695,17 @@ async def handle_mcp(
 
         if tool_name == "reopen_daily_task":
             if "task_id" not in arguments:
-                return _jsonrpc_error(request_id, -32602, "Missing required argument: task_id")
+                return _invalid_params(request_id, "Missing required argument: task_id")
+            task_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["task_id"],
+                "task_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = DailyTaskRead.model_validate(
-                    service.reopen_daily_task(int(arguments["task_id"]), user=_user)
+                    service.reopen_daily_task(task_id, user=_user)
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))
@@ -577,14 +715,20 @@ async def handle_mcp(
             required_fields = ["amount", "reason"]
             missing = [field for field in required_fields if field not in arguments]
             if missing:
-                return _jsonrpc_error(
+                return _invalid_params(
                     request_id,
-                    -32602,
                     f"Missing required argument: {missing[0]}",
                 )
+            amount, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["amount"],
+                "amount",
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = RewardLedgerRead.model_validate(
-                    service.spend_reward(int(arguments["amount"]), arguments["reason"], user=_user)
+                    service.spend_reward(amount, arguments["reason"], user=_user)
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))

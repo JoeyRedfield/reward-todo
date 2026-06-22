@@ -1,8 +1,12 @@
 from datetime import date
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
+from app.dependencies import get_db_session
+from app.main import create_app
 from app.models import User
 from app.services.task_reward_service import TaskRewardService
 
@@ -459,3 +463,42 @@ def test_public_endpoints_only_expose_bootstrap_user_data(client, db_session) ->
     )
     assert ledger_response.status_code == 200
     assert [item["daily_task_id"] for item in ledger_response.json()["items"]] == [bootstrap_task.id]
+
+
+def test_public_bootstrap_user_lookup_uses_normalized_username(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "Reward   Admin")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "super-secret")
+    monkeypatch.setenv("READONLY_TOKEN", "readonly-test-token")
+    get_settings.cache_clear()
+
+    app = create_app()
+
+    def override_get_db_session():
+        yield db_session
+
+    app.dependency_overrides[get_db_session] = override_get_db_session
+
+    with TestClient(app) as isolated_client:
+        login_response = isolated_client.post(
+            "/api/auth/login",
+            json={"username": "Reward   Admin", "password": "super-secret"},
+        )
+        assert login_response.status_code == 200
+
+        create_response = isolated_client.post(
+            "/api/task-projects",
+            json={"name": "归一化项目"},
+        )
+        assert create_response.status_code == 200
+
+        isolated_client.post("/api/auth/logout")
+
+        public_response = isolated_client.get(
+            "/api/public/projects",
+            headers={"Authorization": "Bearer readonly-test-token"},
+        )
+        assert public_response.status_code == 200
+        assert [item["name"] for item in public_response.json()["items"]] == ["归一化项目"]
+
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()

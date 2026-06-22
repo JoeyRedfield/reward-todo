@@ -46,6 +46,73 @@ def upgrade() -> None:
             ["id"],
         )
 
+    connection = op.get_bind()
+    bootstrap_user_id = connection.execute(
+        sa.text(
+            """
+            SELECT id
+            FROM users
+            ORDER BY id ASC
+            LIMIT 1
+            """
+        )
+    ).scalar()
+
+    if bootstrap_user_id is not None:
+        connection.execute(
+            sa.text(
+                """
+                UPDATE task_projects
+                SET user_id = :user_id
+                WHERE user_id IS NULL
+                """
+            ),
+            {"user_id": bootstrap_user_id},
+        )
+        connection.execute(
+            sa.text(
+                """
+                UPDATE daily_tasks
+                SET user_id = COALESCE(
+                    (
+                        SELECT task_projects.user_id
+                        FROM task_projects
+                        WHERE task_projects.id = daily_tasks.project_id
+                    ),
+                    :user_id
+                )
+                WHERE user_id IS NULL
+                """
+            ),
+            {"user_id": bootstrap_user_id},
+        )
+        connection.execute(
+            sa.text(
+                """
+                UPDATE reward_ledger
+                SET user_id = COALESCE(
+                    (
+                        SELECT daily_tasks.user_id
+                        FROM daily_tasks
+                        WHERE daily_tasks.id = reward_ledger.daily_task_id
+                    ),
+                    :user_id
+                )
+                WHERE user_id IS NULL
+                """
+            ),
+            {"user_id": bootstrap_user_id},
+        )
+
+    with op.batch_alter_table("task_projects") as batch_op:
+        batch_op.alter_column("user_id", existing_type=sa.Integer(), nullable=False)
+
+    with op.batch_alter_table("daily_tasks") as batch_op:
+        batch_op.alter_column("user_id", existing_type=sa.Integer(), nullable=False)
+
+    with op.batch_alter_table("reward_ledger") as batch_op:
+        batch_op.alter_column("user_id", existing_type=sa.Integer(), nullable=False)
+
 
 def downgrade() -> None:
     with op.batch_alter_table("reward_ledger") as batch_op:

@@ -177,3 +177,53 @@ def test_mcp_token_is_limited_to_own_task_reward_data(client) -> None:
         "current_balance": 0,
         "today_earned": 0,
     }
+
+
+def test_mcp_returns_invalid_params_for_malformed_date(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-invalid-date",
+    )
+
+    response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "list_daily_tasks", "arguments": {"date": "2026-99-99"}},
+        request_id=9,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32602
+
+
+def test_mcp_returns_invalid_params_for_non_integer_project_id(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-invalid-int",
+    )
+
+    response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_task_template",
+            "arguments": {
+                "project_id": "not-an-int",
+                "name": "broken",
+                "default_estimated_duration_minutes": 30,
+                "default_reward_amount": 10,
+            },
+        },
+        request_id=10,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32602
