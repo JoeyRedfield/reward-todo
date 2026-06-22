@@ -21,5 +21,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    access_tokens = sa.table(
+        "access_tokens",
+        sa.column("expires_at", sa.DateTime(timezone=True)),
+    )
+
+    op.execute(
+        access_tokens.update()
+        .where(access_tokens.c.expires_at.is_(None))
+        .values(expires_at=sa.func.now())
+    )
+
     with op.batch_alter_table("access_tokens") as batch_op:
         batch_op.alter_column("expires_at", existing_type=sa.DateTime(timezone=True), nullable=False)

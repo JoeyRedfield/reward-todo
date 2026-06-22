@@ -16,11 +16,26 @@ depends_on = None
 
 
 def upgrade() -> None:
+    users = sa.table(
+        "users",
+        sa.column("username", sa.String(length=200)),
+        sa.column("display_name", sa.String(length=200)),
+        sa.column("email", sa.String(length=255)),
+    )
+
     op.add_column("users", sa.Column("display_name", sa.String(length=200), nullable=True))
     op.add_column("users", sa.Column("email", sa.String(length=255), nullable=True))
 
-    op.execute("UPDATE users SET display_name = username WHERE display_name IS NULL")
-    op.execute("UPDATE users SET email = username || '@local.invalid' WHERE email IS NULL")
+    op.execute(
+        users.update()
+        .where(users.c.display_name.is_(None))
+        .values(display_name=users.c.username)
+    )
+    op.execute(
+        users.update()
+        .where(users.c.email.is_(None))
+        .values(email=users.c.username + sa.literal("@local.invalid"))
+    )
 
     with op.batch_alter_table("users") as batch_op:
         batch_op.alter_column("display_name", existing_type=sa.String(length=200), nullable=False)

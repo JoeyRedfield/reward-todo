@@ -1,13 +1,16 @@
+import datetime
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
-from app.models import SessionRecord, User
+from app.config import Settings, get_settings
+from app.models import AccessToken, SessionRecord, User
 from app.security import (
     generate_session_token,
+    generate_access_token,
+    hash_access_token,
     hash_password,
     hash_session_token,
     normalize_username,
@@ -30,6 +33,8 @@ class AuthService:
 
         user = User(
             username=normalized_username,
+            display_name=normalized_username,
+            email=f"{normalized_username}@local.invalid",
             password_hash=hash_password(password),
             password_changed_at=utc_now(),
         )
@@ -150,8 +155,154 @@ class AuthService:
         self.session.refresh(record)
         return user, token, record
 
+    def list_sessions_for_user(
+        self,
+        user_id: int,
+        current_session_token: Optional[str] = None,
+    ) -> list[tuple[SessionRecord, bool]]:
+        records = self.session.scalars(
+            select(SessionRecord)
+            .where(SessionRecord.user_id == user_id)
+            .order_by(SessionRecord.created_at.desc(), SessionRecord.id.desc())
+        ).all()
+        current_hash = (
+            hash_session_token(current_session_token) if current_session_token is not None else None
+        )
+        return [(record, record.session_token_hash == current_hash) for record in records]
+
+    def revoke_session_for_user(self, user_id: int, session_id: int) -> bool:
+        record = self.session.get(SessionRecord, session_id)
+        if record is None or record.user_id != user_id:
+            return False
+        self.session.delete(record)
+        self.session.commit()
+        return True
+
+    def revoke_other_sessions_for_user(
+        self,
+        user_id: int,
+        current_session_token: Optional[str] = None,
+    ) -> int:
+        current_hash = (
+            hash_session_token(current_session_token) if current_session_token is not None else None
+        )
+        records = self.session.scalars(
+            select(SessionRecord).where(SessionRecord.user_id == user_id)
+        ).all()
+
+        revoked_count = 0
+        for record in records:
+            if current_hash is not None and record.session_token_hash == current_hash:
+                continue
+            self.session.delete(record)
+            revoked_count += 1
+
+        self.session.commit()
+        return revoked_count
+
+    def create_access_token(
+        self,
+        user: User,
+        *,
+        name: str,
+        token_type: str,
+        expires_in_seconds: Optional[int] = None,
+        expires_in_days: Optional[int] = None,
+    ) -> tuple[str, AccessToken]:
+        raw_token = generate_access_token()
+        now = utc_now()
+        expires_at = self._resolve_access_token_expiry(
+            now,
+            expires_in_seconds=expires_in_seconds,
+            expires_in_days=expires_in_days,
+        )
+        record = AccessToken(
+            user_id=user.id,
+            name=name,
+            token_type=token_type,
+            token_hash=hash_access_token(raw_token),
+            expires_at=expires_at,
+        )
+        self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return raw_token, record
+
+    def list_access_tokens_for_user(self, user_id: int) -> list[AccessToken]:
+        return self.session.scalars(
+            select(AccessToken)
+            .where(AccessToken.user_id == user_id)
+            .order_by(AccessToken.created_at.desc(), AccessToken.id.desc())
+        ).all()
+
+    def revoke_access_token_for_user(self, user_id: int, token_id: int) -> bool:
+        record = self.session.get(AccessToken, token_id)
+        if record is None or record.user_id != user_id:
+            return False
+        self.session.delete(record)
+        self.session.commit()
+        return True
+
+    def authenticate_access_token(
+        self,
+        raw_token: str,
+        *,
+        accepted_token_types: Optional[set[str]] = None,
+    ) -> Optional[tuple[User, AccessToken]]:
+        token_hash = hash_access_token(raw_token)
+        record = self.session.scalar(
+            select(AccessToken).where(AccessToken.token_hash == token_hash)
+        )
+        if record is None:
+            return None
+
+        if accepted_token_types is not None and record.token_type not in accepted_token_types:
+            return None
+
+        now = utc_now()
+        if record.expires_at is not None and self._as_utc(record.expires_at) <= now:
+            self.session.delete(record)
+            self.session.commit()
+            return None
+
+        record.last_seen_at = now
+        self.session.commit()
+        user = self.session.get(User, record.user_id)
+        if user is None:
+            return None
+        return user, record
+
+    def build_api_base_url(self) -> str:
+        return f"{self._root_url().rstrip('/')}/api"
+
+    def build_mcp_url(self) -> str:
+        return f"{self._root_url().rstrip('/')}/mcp"
+
     def _get_user_by_username(self, username: str) -> Optional[User]:
         return self.session.scalar(select(User).where(User.username == username))
+
+    def _root_url(self) -> str:
+        root_url = getattr(self.settings, "app_root_url", None)
+        if root_url:
+            return root_url
+        return "http://localhost:8088"
+
+    def _resolve_access_token_expiry(
+        self,
+        now: datetime.datetime,
+        *,
+        expires_in_seconds: Optional[int],
+        expires_in_days: Optional[int],
+    ) -> Optional[datetime.datetime]:
+        if expires_in_seconds is not None:
+            if expires_in_seconds == 0:
+                return None
+            return now + datetime.timedelta(seconds=expires_in_seconds)
+
+        if expires_in_days is not None:
+            return now + datetime.timedelta(days=expires_in_days)
+
+        return now + datetime.timedelta(days=30)
 
     def _as_utc(self, value):
         if value.tzinfo is None:

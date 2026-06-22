@@ -25,7 +25,24 @@ def clear_settings_cache():
     get_settings.cache_clear()
 
 
-def test_settings_raise_without_initial_credentials_outside_test(monkeypatch):
+@pytest.fixture
+def isolated_settings_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("READONLY_TOKEN", raising=False)
+    monkeypatch.delenv("AUTH_INITIAL_USERNAME", raising=False)
+    monkeypatch.delenv("AUTH_INITIAL_PASSWORD", raising=False)
+    monkeypatch.delenv("AUTH_COOKIE_SECURE", raising=False)
+    monkeypatch.delenv("AUTH_COOKIE_SAMESITE", raising=False)
+    monkeypatch.delenv("AUTH_SESSION_DAYS", raising=False)
+    monkeypatch.delenv("AUTH_ENABLE_REGISTRATION", raising=False)
+    monkeypatch.delenv("AUTH_ENABLE_API_TOKENS", raising=False)
+    monkeypatch.delenv("AUTH_ENABLE_MCP", raising=False)
+    monkeypatch.delenv("APP_ROOT_URL", raising=False)
+    monkeypatch.delenv("TESTING", raising=False)
+
+
+def test_settings_raise_without_initial_credentials_outside_test(monkeypatch, isolated_settings_env):
     monkeypatch.delenv("AUTH_INITIAL_USERNAME", raising=False)
     monkeypatch.delenv("AUTH_INITIAL_PASSWORD", raising=False)
     monkeypatch.setenv("TESTING", "false")
@@ -34,7 +51,7 @@ def test_settings_raise_without_initial_credentials_outside_test(monkeypatch):
         get_settings()
 
 
-def test_settings_require_initial_credentials_outside_test(monkeypatch):
+def test_settings_require_initial_credentials_outside_test(monkeypatch, isolated_settings_env):
     monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
     monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
     monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
@@ -48,7 +65,7 @@ def test_settings_require_initial_credentials_outside_test(monkeypatch):
     assert settings.auth_cookie_samesite == "lax"
 
 
-def test_settings_enable_registration_by_default(monkeypatch):
+def test_settings_enable_registration_by_default(monkeypatch, isolated_settings_env):
     monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
     monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
     monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
@@ -59,7 +76,20 @@ def test_settings_enable_registration_by_default(monkeypatch):
     assert settings.auth_enable_registration is True
 
 
-def test_settings_require_lax_samesite(monkeypatch):
+def test_settings_include_existing_route_contract_fields(monkeypatch, isolated_settings_env):
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+    monkeypatch.setenv("TESTING", "false")
+
+    settings = get_settings()
+
+    assert settings.app_root_url == "http://localhost:8088"
+    assert settings.auth_enable_api_tokens is True
+    assert settings.auth_enable_mcp is True
+
+
+def test_settings_require_lax_samesite(monkeypatch, isolated_settings_env):
     monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
     monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
     monkeypatch.setenv("AUTH_COOKIE_SAMESITE", "strict")
@@ -69,7 +99,7 @@ def test_settings_require_lax_samesite(monkeypatch):
         get_settings()
 
 
-def test_settings_require_positive_session_days(monkeypatch):
+def test_settings_require_positive_session_days(monkeypatch, isolated_settings_env):
     monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
     monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
     monkeypatch.setenv("AUTH_SESSION_DAYS", "0")
@@ -112,6 +142,29 @@ def _build_alembic_subprocess(backend_dir: Path) -> tuple[list[str], dict[str, s
         ),
     ]
     return command, env
+
+
+def _run_alembic(
+    backend_dir: Path,
+    env: dict[str, str],
+    *args: str,
+) -> None:
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import os, sys; "
+            "cwd = os.getcwd(); "
+            "site_packages = os.environ.get('REWARD_TODO_SITE_PACKAGES', ''); "
+            "sys.path = [p for p in sys.path if p not in ('', cwd)]; "
+            "paths = [p for p in site_packages.split(os.pathsep) if p]; "
+            "sys.path[:0] = paths; "
+            "from alembic.config import CommandLine; "
+            "sys.path.insert(0, cwd); "
+            f"CommandLine(prog='alembic').main(argv={['-c', 'alembic.ini', *args]!r})"
+        ),
+    ]
+    subprocess.run(command, cwd=backend_dir, env=env, check=True)
 
 
 def test_auth_migrations_create_tables_and_indexes(tmp_path, monkeypatch):
@@ -197,6 +250,101 @@ def test_auth_migrations_include_profile_columns(tmp_path, monkeypatch):
         engine.dispose()
 
 
+def test_auth_migration_0003_downgrade_backfills_null_expiry(tmp_path, monkeypatch):
+    database_path = tmp_path / "auth_access_tokens.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    _, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env["AUTH_INITIAL_USERNAME"] = "reward"
+    env["AUTH_INITIAL_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
+
+    _run_alembic(backend_dir, env, "upgrade", "0003_make_access_token_expiry_nullable")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO users (username, password_hash, created_at, updated_at, password_changed_at)
+                VALUES ('reward', 'hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO access_tokens
+                    (user_id, name, token_type, token_hash, created_at, updated_at, expires_at, last_seen_at)
+                VALUES
+                    (1, 'No Expiry', 'api', 'token-hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL)
+                """
+            )
+    finally:
+        engine.dispose()
+
+    _run_alembic(backend_dir, env, "downgrade", "0002_add_auth_tables")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        inspector = inspect(engine)
+        expires_at_column = next(
+            column for column in inspector.get_columns("access_tokens") if column["name"] == "expires_at"
+        )
+        assert expires_at_column["nullable"] is False
+    finally:
+        engine.dispose()
+
+
+def test_auth_migration_0004_backfills_existing_users(tmp_path, monkeypatch):
+    database_path = tmp_path / "auth_profile_backfill.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    _, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env["AUTH_INITIAL_USERNAME"] = "reward"
+    env["AUTH_INITIAL_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
+
+    _run_alembic(backend_dir, env, "upgrade", "0002_add_auth_tables")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO users (username, password_hash, created_at, updated_at, password_changed_at)
+                VALUES ('legacy-user', 'hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+    finally:
+        engine.dispose()
+
+    _run_alembic(backend_dir, env, "upgrade", "head")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.connect() as connection:
+            row = connection.exec_driver_sql(
+                "SELECT username, display_name, email FROM users WHERE username = 'legacy-user'"
+            ).mappings().one()
+        assert row["display_name"] == "legacy-user"
+        assert row["email"] == "legacy-user@local.invalid"
+    finally:
+        engine.dispose()
+
+
 def test_bootstrap_user_is_created_once(db_session, monkeypatch):
     service = AuthService(db_session)
 
@@ -208,6 +356,8 @@ def test_bootstrap_user_is_created_once(db_session, monkeypatch):
     assert first_user.id == second_user.id
     assert len(users) == 1
     assert first_user.username == "reward admin"
+    assert first_user.display_name == "reward admin"
+    assert first_user.email == "reward admin@local.invalid"
     assert verify_password("secret-pass", first_user.password_hash) is True
 
 
@@ -237,6 +387,8 @@ def test_create_and_revoke_session(db_session, monkeypatch):
 def test_bootstrap_user_recovers_from_unique_conflict(db_session, monkeypatch):
     existing_user = User(
         username="reward admin",
+        display_name="reward admin",
+        email="reward admin@local.invalid",
         password_hash="existing-hash",
     )
     db_session.add(existing_user)
@@ -606,7 +758,14 @@ def test_reset_password_rejects_short_password(db_session):
 def test_reset_password_requires_exactly_one_user(db_session):
     service = AuthService(db_session)
     service.ensure_initial_user("reward", "super-secret")
-    db_session.add(User(username="second-user", password_hash="hash"))
+    db_session.add(
+        User(
+            username="second-user",
+            display_name="second-user",
+            email="second-user@local.invalid",
+            password_hash="hash",
+        )
+    )
     db_session.commit()
 
     from scripts.reset_password import reset_password
