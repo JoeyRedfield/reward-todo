@@ -2,6 +2,40 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import ProjectsPage from "./Projects";
 
+const activeProject = { id: 1, name: "健身", status: "active", sort_order: 0 };
+const nextActiveProject = { id: 2, name: "写作", status: "active", sort_order: 1 };
+const archivedProject = { id: 3, name: "阅读", status: "archived", sort_order: 2 };
+
+const activeTemplate = {
+  id: 1,
+  project_id: 1,
+  name: "跑步 30 分钟",
+  default_estimated_duration_minutes: 30,
+  default_reward_amount: 2000,
+  notes: "",
+  is_active: true,
+};
+
+const archivedTemplate = {
+  id: 2,
+  project_id: 1,
+  name: "拉伸 10 分钟",
+  default_estimated_duration_minutes: 10,
+  default_reward_amount: 600,
+  notes: "",
+  is_active: false,
+};
+
+const nextProjectTemplate = {
+  id: 3,
+  project_id: 2,
+  name: "晨间随笔 15 分钟",
+  default_estimated_duration_minutes: 15,
+  default_reward_amount: 900,
+  notes: "",
+  is_active: true,
+};
+
 const {
   fetchProjectsMock,
   fetchTaskTemplatesMock,
@@ -33,32 +67,15 @@ vi.mock("../api/client", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchProjectsMock.mockResolvedValue([
-    { id: 1, name: "健身", status: "active", sort_order: 0 },
-  ]);
-  fetchTaskTemplatesMock.mockResolvedValue([
-    {
-      id: 1,
-      project_id: 1,
-      name: "跑步 30 分钟",
-      default_estimated_duration_minutes: 30,
-      default_reward_amount: 2000,
-      notes: "",
-      is_active: true,
-    },
-  ]);
+  fetchProjectsMock.mockResolvedValue([activeProject]);
+  fetchTaskTemplatesMock.mockResolvedValue([activeTemplate]);
   createProjectMock.mockResolvedValue({
     id: 2,
     name: "写作",
     status: "active",
     sort_order: 1,
   });
-  updateProjectMock.mockImplementation(async (projectId, payload) => ({
-    id: projectId,
-    name: projectId === 1 ? "健身" : "写作",
-    status: payload.status,
-    sort_order: projectId === 1 ? 0 : 1,
-  }));
+  updateProjectMock.mockResolvedValue({});
   createTaskTemplateMock.mockResolvedValue({
     id: 2,
     project_id: 1,
@@ -68,15 +85,7 @@ beforeEach(() => {
     notes: "",
     is_active: true,
   });
-  updateTaskTemplateMock.mockImplementation(async (templateId, payload) => ({
-    id: templateId,
-    project_id: 1,
-    name: templateId === 1 ? "跑步 30 分钟" : "拉伸 10 分钟",
-    default_estimated_duration_minutes: templateId === 1 ? 30 : 10,
-    default_reward_amount: templateId === 1 ? 2000 : 600,
-    notes: "",
-    is_active: payload.is_active,
-  }));
+  updateTaskTemplateMock.mockResolvedValue({});
   createDailyTaskMock.mockResolvedValue({ id: 10 });
 });
 
@@ -120,22 +129,7 @@ test("submits default duration and reward when template fields are blank", async
 });
 
 test("archives and restores projects via updateProject", async () => {
-  fetchProjectsMock
-    .mockResolvedValueOnce([
-      { id: 1, name: "健身", status: "active", sort_order: 0 },
-      { id: 2, name: "写作", status: "active", sort_order: 1 },
-      { id: 3, name: "阅读", status: "archived", sort_order: 2 },
-    ])
-    .mockResolvedValueOnce([
-      { id: 1, name: "健身", status: "archived", sort_order: 0 },
-      { id: 2, name: "写作", status: "active", sort_order: 1 },
-      { id: 3, name: "阅读", status: "archived", sort_order: 2 },
-    ])
-    .mockResolvedValueOnce([
-      { id: 1, name: "健身", status: "active", sort_order: 0 },
-      { id: 2, name: "写作", status: "active", sort_order: 1 },
-      { id: 3, name: "阅读", status: "archived", sort_order: 2 },
-    ]);
+  fetchProjectsMock.mockResolvedValue([activeProject, nextActiveProject, archivedProject]);
 
   render(<ProjectsPage />);
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
@@ -154,26 +148,7 @@ test("archives and restores projects via updateProject", async () => {
 });
 
 test("archives and restores templates via updateTaskTemplate", async () => {
-  fetchTaskTemplatesMock.mockResolvedValue([
-    {
-      id: 1,
-      project_id: 1,
-      name: "跑步 30 分钟",
-      default_estimated_duration_minutes: 30,
-      default_reward_amount: 2000,
-      notes: "",
-      is_active: true,
-    },
-    {
-      id: 2,
-      project_id: 1,
-      name: "拉伸 10 分钟",
-      default_estimated_duration_minutes: 10,
-      default_reward_amount: 600,
-      notes: "",
-      is_active: false,
-    },
-  ]);
+  fetchTaskTemplatesMock.mockResolvedValue([activeTemplate, archivedTemplate]);
 
   render(<ProjectsPage />);
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
@@ -193,41 +168,23 @@ test("archives and restores templates via updateTaskTemplate", async () => {
 });
 
 test("loads templates for the next active project after archiving the current project", async () => {
-  fetchProjectsMock
-    .mockResolvedValueOnce([
-      { id: 1, name: "健身", status: "active", sort_order: 0 },
-      { id: 2, name: "写作", status: "active", sort_order: 1 },
-    ])
-    .mockResolvedValueOnce([
-      { id: 1, name: "健身", status: "archived", sort_order: 0 },
-      { id: 2, name: "写作", status: "active", sort_order: 1 },
-    ]);
+  let projectsResponse = [activeProject, nextActiveProject];
+  fetchProjectsMock.mockImplementation(async () => projectsResponse);
   fetchTaskTemplatesMock.mockImplementation(async (projectId) => {
     if (projectId === 2) {
-      return [
-        {
-          id: 2,
-          project_id: 2,
-          name: "晨间随笔 15 分钟",
-          default_estimated_duration_minutes: 15,
-          default_reward_amount: 900,
-          notes: "",
-          is_active: true,
-        },
-      ];
+      return [nextProjectTemplate];
     }
 
-    return [
-      {
-        id: 1,
-        project_id: 1,
-        name: "跑步 30 分钟",
-        default_estimated_duration_minutes: 30,
-        default_reward_amount: 2000,
-        notes: "",
-        is_active: true,
-      },
-    ];
+    return [activeTemplate];
+  });
+  updateProjectMock.mockImplementation(async (projectId, payload) => {
+    if (projectId === activeProject.id && payload.status === "archived") {
+      projectsResponse = [
+        { ...activeProject, status: "archived" },
+        nextActiveProject,
+      ];
+    }
+    return {};
   });
 
   render(<ProjectsPage />);
@@ -238,9 +195,8 @@ test("loads templates for the next active project after archiving the current pr
   await waitFor(() => {
     expect(updateProjectMock).toHaveBeenCalledWith(1, { status: "archived" });
   });
-
-  await waitFor(() => {
-    expect(fetchTaskTemplatesMock).toHaveBeenLastCalledWith(2);
-  });
   expect(await screen.findByText("晨间随笔 15 分钟")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.queryByText("跑步 30 分钟")).not.toBeInTheDocument();
+  });
 });
