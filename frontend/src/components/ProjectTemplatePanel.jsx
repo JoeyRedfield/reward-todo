@@ -6,17 +6,13 @@ function formatYuan(amount) {
 
 function confirmBeforeArchive(message) {
   if (typeof window?.confirm !== "function") {
-    return true;
-  }
-
-  if (typeof window.navigator?.userAgent === "string" && /jsdom/i.test(window.navigator.userAgent)) {
-    return true;
+    return false;
   }
 
   try {
     return window.confirm(message) !== false;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -110,7 +106,7 @@ export default function ProjectTemplatePanel({
     await onArchiveTemplate(template.id);
   };
 
-  const renderProjectList = (items, emptyText, renderAction) => {
+  const renderProjectList = (items, emptyText, renderAction, isSelectable) => {
     if (items.length === 0) {
       return <p className="empty-copy">{emptyText}</p>;
     }
@@ -118,13 +114,20 @@ export default function ProjectTemplatePanel({
     return items.map((project) => (
       <article key={project.id} className="template-card">
         <div className="task-row">
-          <button
-            className={`project-chip${project.id === selectedProjectId ? " is-active" : ""}`}
-            onClick={() => onSelectProject(project.id)}
-          >
-            <span>{project.name}</span>
-            <span>{project.status === "active" ? "启用中" : "已归档"}</span>
-          </button>
+          {isSelectable ? (
+            <button
+              className={`project-chip${project.id === selectedProjectId ? " is-active" : ""}`}
+              onClick={() => onSelectProject(project.id)}
+            >
+              <span>{project.name}</span>
+              <span>{project.status === "active" ? "启用中" : "已归档"}</span>
+            </button>
+          ) : (
+            <div className="project-chip" aria-label={`${project.name} 已归档`}>
+              <span>{project.name}</span>
+              <span>已归档</span>
+            </div>
+          )}
           {renderAction(project)}
         </div>
       </article>
@@ -202,7 +205,7 @@ export default function ProjectTemplatePanel({
             >
               删除
             </button>
-          ))}
+          ), true)}
           <h3>已归档</h3>
           {renderProjectList(archivedProjects, "还没有归档项目。", (project) => (
             <button
@@ -212,7 +215,7 @@ export default function ProjectTemplatePanel({
             >
               恢复
             </button>
-          ))}
+          ), false)}
         </div>
       </section>
 

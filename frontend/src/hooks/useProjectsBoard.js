@@ -72,6 +72,11 @@ export default function useProjectsBoard() {
   const selectProject = useCallback(async (projectId) => {
     setError(null);
     setSuccessMessage(null);
+    const project = projects.find((item) => item.id === projectId);
+    if (!project || project.status !== "active") {
+      setError("只能选择启用中的项目。");
+      return;
+    }
     try {
       const templatesData = await fetchTaskTemplates(projectId);
       setSelectedProjectId(projectId);
@@ -79,7 +84,7 @@ export default function useProjectsBoard() {
     } catch (loadError) {
       setError(getErrorMessage(loadError, "模板加载失败，请稍后重试。"));
     }
-  }, []);
+  }, [projects]);
 
   const submitProject = useCallback(async (name) => {
     setSubmittingProject(true);

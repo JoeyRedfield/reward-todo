@@ -36,6 +36,16 @@ const nextProjectTemplate = {
   is_active: true,
 };
 
+const archivedProjectTemplate = {
+  id: 4,
+  project_id: 3,
+  name: "归档项目模板",
+  default_estimated_duration_minutes: 25,
+  default_reward_amount: 1000,
+  notes: "",
+  is_active: true,
+};
+
 const {
   fetchProjectsMock,
   fetchTaskTemplatesMock,
@@ -130,6 +140,7 @@ test("submits default duration and reward when template fields are blank", async
 
 test("archives and restores projects via updateProject", async () => {
   fetchProjectsMock.mockResolvedValue([activeProject, nextActiveProject, archivedProject]);
+  window.confirm = vi.fn(() => true);
 
   render(<ProjectsPage />);
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
@@ -149,6 +160,7 @@ test("archives and restores projects via updateProject", async () => {
 
 test("archives and restores templates via updateTaskTemplate", async () => {
   fetchTaskTemplatesMock.mockResolvedValue([activeTemplate, archivedTemplate]);
+  window.confirm = vi.fn(() => true);
 
   render(<ProjectsPage />);
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
@@ -168,6 +180,7 @@ test("archives and restores templates via updateTaskTemplate", async () => {
 });
 
 test("loads templates for the next active project after archiving the current project", async () => {
+  window.confirm = vi.fn(() => true);
   let projectsResponse = [activeProject, nextActiveProject];
   fetchProjectsMock.mockImplementation(async () => projectsResponse);
   fetchTaskTemplatesMock.mockImplementation(async (projectId) => {
@@ -199,4 +212,41 @@ test("loads templates for the next active project after archiving the current pr
   await waitFor(() => {
     expect(screen.queryByText("跑步 30 分钟")).not.toBeInTheDocument();
   });
+});
+
+test("does not allow selecting an archived project", async () => {
+  fetchProjectsMock.mockResolvedValue([activeProject, archivedProject]);
+  fetchTaskTemplatesMock.mockImplementation(async (projectId) => {
+    if (projectId === archivedProject.id) {
+      return [archivedProjectTemplate];
+    }
+
+    return [activeTemplate];
+  });
+
+  render(<ProjectsPage />);
+  expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
+
+  expect(
+    screen.queryByRole("button", { name: /^阅读.*已归档$/ })
+  ).not.toBeInTheDocument();
+  expect(screen.getByLabelText("阅读 已归档")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByPlaceholderText("例如：力量训练 20 分钟"), {
+    target: { value: "继续训练" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建模板" }));
+
+  await waitFor(() => {
+    expect(createTaskTemplateMock).toHaveBeenCalledWith({
+      project_id: 1,
+      name: "继续训练",
+      default_estimated_duration_minutes: 20,
+      default_reward_amount: 1200,
+      notes: "",
+      is_active: true,
+    });
+  });
+  expect(fetchTaskTemplatesMock).not.toHaveBeenCalledWith(archivedProject.id);
+  expect(screen.queryByText("归档项目模板")).not.toBeInTheDocument();
 });
