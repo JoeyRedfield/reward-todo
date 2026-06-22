@@ -2,12 +2,18 @@ from datetime import date
 
 import pytest
 
+from app.services.auth_service import AuthService
 from app.services.task_reward_service import TaskRewardService
 
 
-def _create_project_and_template(service: TaskRewardService, *, is_active: bool = True):
-    project = service.create_project(name="健身")
+def _create_user(db_session):
+    return AuthService(db_session).ensure_initial_user("reward", "super-secret")
+
+
+def _create_project_and_template(service: TaskRewardService, user, *, is_active: bool = True):
+    project = service.create_project(name="健身", user=user)
     template = service.create_task_template(
+        user=user,
         project_id=project.id,
         name="跑步 30 分钟",
         default_estimated_duration_minutes=30,
@@ -20,17 +26,19 @@ def _create_project_and_template(service: TaskRewardService, *, is_active: bool 
 
 def test_complete_daily_task_creates_reward_entry(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=28,
         reward_amount=1800,
     )
 
-    completed = service.complete_daily_task(task.id, actual_duration_minutes=26)
-    summary = service.get_reward_summary(date(2026, 6, 20))
-    ledger = service.list_reward_ledger()
+    completed = service.complete_daily_task(task.id, user=user, actual_duration_minutes=26)
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 20))
+    ledger = service.list_reward_ledger(20, user=user)
 
     assert completed.status == "completed"
     assert completed.actual_duration_minutes == 26
@@ -45,18 +53,20 @@ def test_complete_daily_task_creates_reward_entry(db_session) -> None:
 
 def test_complete_daily_task_is_idempotent(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=30,
         reward_amount=2000,
     )
 
-    service.complete_daily_task(task.id)
-    service.complete_daily_task(task.id)
-    ledger = service.list_reward_ledger()
-    summary = service.get_reward_summary(date(2026, 6, 20))
+    service.complete_daily_task(task.id, user=user)
+    service.complete_daily_task(task.id, user=user)
+    ledger = service.list_reward_ledger(20, user=user)
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 20))
 
     assert len(ledger) == 1
     assert ledger[0].amount == 2000
@@ -66,18 +76,20 @@ def test_complete_daily_task_is_idempotent(db_session) -> None:
 
 def test_reopen_daily_task_reverses_balance(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=30,
         reward_amount=2000,
     )
-    service.complete_daily_task(task.id, actual_duration_minutes=29)
+    service.complete_daily_task(task.id, user=user, actual_duration_minutes=29)
 
-    reopened = service.reopen_daily_task(task.id)
-    summary = service.get_reward_summary(date(2026, 6, 20))
-    ledger = service.list_reward_ledger()
+    reopened = service.reopen_daily_task(task.id, user=user)
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 20))
+    ledger = service.list_reward_ledger(20, user=user)
 
     assert reopened.status == "pending"
     assert reopened.actual_duration_minutes is None
@@ -91,17 +103,20 @@ def test_reopen_daily_task_reverses_balance(db_session) -> None:
 
 def test_spend_reward_insufficient_balance_rejects(db_session) -> None:
     service = TaskRewardService(db_session)
+    user = _create_user(db_session)
 
     with pytest.raises(ValueError, match="余额不足"):
-        service.spend_reward(amount=500, reason="咖啡")
+        service.spend_reward(amount=500, reason="咖啡", user=user)
 
 
 def test_inactive_template_cannot_create_daily_task(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service, is_active=False)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user, is_active=False)
 
     with pytest.raises(ValueError, match="模板已停用"):
         service.create_daily_task(
+            user=user,
             task_template_id=template.id,
             date=date(2026, 6, 20),
             estimated_duration_minutes=30,
@@ -111,10 +126,12 @@ def test_inactive_template_cannot_create_daily_task(db_session) -> None:
 
 def test_update_task_template_updates_fields(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
 
     updated = service.update_task_template(
         template.id,
+        user=user,
         name="夜跑 45 分钟",
         default_estimated_duration_minutes=45,
         default_reward_amount=2600,
@@ -131,9 +148,11 @@ def test_update_task_template_updates_fields(db_session) -> None:
 
 def test_create_task_template_rejects_unknown_project_id(db_session) -> None:
     service = TaskRewardService(db_session)
+    user = _create_user(db_session)
 
     with pytest.raises(ValueError, match="项目不存在"):
         service.create_task_template(
+            user=user,
             project_id=999999,
             name="无效模板",
             default_estimated_duration_minutes=30,
@@ -145,8 +164,10 @@ def test_create_task_template_rejects_unknown_project_id(db_session) -> None:
 
 def test_create_daily_task_rejects_duplicate_template_for_same_date(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
     service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=30,
@@ -155,6 +176,7 @@ def test_create_daily_task_rejects_duplicate_template_for_same_date(db_session) 
 
     with pytest.raises(ValueError, match="当日任务已存在"):
         service.create_daily_task(
+            user=user,
             task_template_id=template.id,
             date=date(2026, 6, 20),
             estimated_duration_minutes=35,
@@ -164,10 +186,12 @@ def test_create_daily_task_rejects_duplicate_template_for_same_date(db_session) 
 
 def test_update_project_updates_fields(db_session) -> None:
     service = TaskRewardService(db_session)
-    project = service.create_project(name="健身")
+    user = _create_user(db_session)
+    project = service.create_project(name="健身", user=user)
 
     updated = service.update_project(
         project.id,
+        user=user,
         name="运动",
         status="archived",
         sort_order=9,
@@ -180,17 +204,19 @@ def test_update_project_updates_fields(db_session) -> None:
 
 def test_reward_summary_returns_current_balance_and_today_earned(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=30,
         reward_amount=2000,
     )
-    service.complete_daily_task(task.id)
-    service.spend_reward(amount=500, reason="兑换咖啡")
+    service.complete_daily_task(task.id, user=user)
+    service.spend_reward(amount=500, reason="兑换咖啡", user=user)
 
-    summary = service.get_reward_summary(date(2026, 6, 20))
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 20))
 
     assert summary.current_balance == 1500
     assert summary.today_earned == 2000
@@ -198,17 +224,19 @@ def test_reward_summary_returns_current_balance_and_today_earned(db_session) -> 
 
 def test_reward_summary_counts_earned_by_daily_task_business_date(db_session) -> None:
     service = TaskRewardService(db_session)
-    _, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 21),
         estimated_duration_minutes=30,
         reward_amount=2000,
     )
-    service.complete_daily_task(task.id)
+    service.complete_daily_task(task.id, user=user)
 
     # Simulate a UTC-stored ledger timestamp that falls on the previous local date.
-    ledger_entry = service.list_reward_ledger(limit=1)[0]
+    ledger_entry = service.list_reward_ledger(1, user=user)[0]
     ledger_entry.created_at = ledger_entry.created_at.replace(
         year=2026,
         month=6,
@@ -220,7 +248,7 @@ def test_reward_summary_counts_earned_by_daily_task_business_date(db_session) ->
     )
     db_session.commit()
 
-    summary = service.get_reward_summary(date(2026, 6, 21))
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 21))
 
     assert summary.current_balance == 2000
     assert summary.today_earned == 2000
@@ -228,15 +256,17 @@ def test_reward_summary_counts_earned_by_daily_task_business_date(db_session) ->
 
 def test_daily_task_snapshot_fields_are_persisted_from_template_and_payload(db_session) -> None:
     service = TaskRewardService(db_session)
-    project, template = _create_project_and_template(service)
+    user = _create_user(db_session)
+    project, template = _create_project_and_template(service, user)
 
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=45,
         reward_amount=2500,
     )
-    tasks = service.list_daily_tasks(date(2026, 6, 20))
+    tasks = service.list_daily_tasks(date(2026, 6, 20), user=user)
 
     assert task.project_id == project.id
     assert task.task_template_id == template.id

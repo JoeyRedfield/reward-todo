@@ -79,7 +79,7 @@ def list_task_templates(
     service: TaskRewardService = Depends(get_task_reward_service),
 ):
     user, _ = authenticated
-    return service.list_templates(project_id=project_id, user=user)
+    return service.list_templates(user=user, project_id=project_id)
 
 
 @router.post("/task-templates", response_model=TaskTemplateRead)
@@ -173,7 +173,7 @@ def reward_summary(
     service: TaskRewardService = Depends(get_task_reward_service),
 ):
     user, _ = authenticated
-    return service.get_reward_summary(datetime.date.today(), user=user)
+    return service.get_reward_summary(user=user, date=datetime.date.today())
 
 
 @router.get("/rewards/ledger", response_model=list[RewardLedgerRead])
@@ -183,7 +183,7 @@ def reward_ledger(
     service: TaskRewardService = Depends(get_task_reward_service),
 ):
     user, _ = authenticated
-    return service.list_reward_ledger(limit, user=user)
+    return service.list_reward_ledger(limit=limit, user=user)
 
 
 @router.post("/rewards/spend", response_model=RewardLedgerRead)

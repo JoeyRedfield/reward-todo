@@ -183,14 +183,14 @@ async def handle_mcp(
 
         if resource_uri == "reward-todo://reward-summary/today":
             payload = RewardSummaryRead.model_validate(
-                service.get_reward_summary(date.today(), user=_user)
+                service.get_reward_summary(user=_user, date=date.today())
             ).model_dump()
             return _jsonrpc_result(request_id, _resource_read_result(resource_uri, payload))
 
         if resource_uri == "reward-todo://reward-ledger/recent":
             payload = [
                 RewardLedgerRead.model_validate(item).model_dump()
-                for item in service.list_reward_ledger(20, user=_user)
+                for item in service.list_reward_ledger(limit=20, user=_user)
             ]
             return _jsonrpc_result(request_id, _resource_read_result(resource_uri, payload))
 
@@ -421,7 +421,7 @@ async def handle_mcp(
             else:
                 target_date = date.today()
             result = RewardSummaryRead.model_validate(
-                service.get_reward_summary(target_date, user=_user)
+                service.get_reward_summary(user=_user, date=target_date)
             ).model_dump()
             return _jsonrpc_result(request_id, _text_result(result))
 
@@ -458,8 +458,8 @@ async def handle_mcp(
             result = [
                 TaskTemplateRead.model_validate(item).model_dump()
                 for item in service.list_templates(
-                    parsed_project_id,
                     user=_user,
+                    project_id=parsed_project_id,
                 )
             ]
             return _jsonrpc_result(request_id, _text_result(result))
@@ -474,7 +474,7 @@ async def handle_mcp(
                 return invalid_response
             result = [
                 RewardLedgerRead.model_validate(item).model_dump()
-                for item in service.list_reward_ledger(limit, user=_user)
+                for item in service.list_reward_ledger(limit=limit, user=_user)
             ]
             return _jsonrpc_result(request_id, _text_result(result))
 

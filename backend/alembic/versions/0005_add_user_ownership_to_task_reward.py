@@ -5,8 +5,12 @@ Revises: 0004_add_user_profile_and_registration_flag
 Create Date: 2026-06-22
 """
 
+import os
+
 from alembic import op
 import sqlalchemy as sa
+
+from app.security import normalize_username
 
 
 revision = "0005_add_user_ownership_to_task_reward"
@@ -47,16 +51,32 @@ def upgrade() -> None:
         )
 
     connection = op.get_bind()
-    bootstrap_user_id = connection.execute(
-        sa.text(
-            """
-            SELECT id
-            FROM users
-            ORDER BY id ASC
-            LIMIT 1
-            """
-        )
-    ).scalar()
+    bootstrap_user_id = None
+    initial_username = os.environ.get("AUTH_INITIAL_USERNAME", "")
+    if initial_username:
+        bootstrap_user_id = connection.execute(
+            sa.text(
+                """
+                SELECT id
+                FROM users
+                WHERE username = :username
+                LIMIT 1
+                """
+            ),
+            {"username": normalize_username(initial_username)},
+        ).scalar()
+
+    if bootstrap_user_id is None:
+        bootstrap_user_id = connection.execute(
+            sa.text(
+                """
+                SELECT id
+                FROM users
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            )
+        ).scalar()
 
     if bootstrap_user_id is not None:
         connection.execute(

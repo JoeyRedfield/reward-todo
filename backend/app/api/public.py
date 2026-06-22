@@ -30,7 +30,7 @@ def get_summary(
     bootstrap_user: User = Depends(get_bootstrap_user),
     service: TaskRewardService = Depends(get_task_reward_service),
 ) -> PublicSummaryResponse:
-    summary = service.get_reward_summary(date, user=bootstrap_user)
+    summary = service.get_reward_summary(user=bootstrap_user, date=date)
     return PublicSummaryResponse(readOnly=True, **summary.model_dump())
 
 
@@ -41,7 +41,7 @@ def get_today(
     bootstrap_user: User = Depends(get_bootstrap_user),
     service: TaskRewardService = Depends(get_task_reward_service),
 ) -> PublicTodayResponse:
-    summary = service.get_reward_summary(date, user=bootstrap_user)
+    summary = service.get_reward_summary(user=bootstrap_user, date=date)
     tasks = service.list_daily_tasks(date, user=bootstrap_user)
     return PublicTodayResponse(readOnly=True, tasks=tasks, **summary.model_dump())
 
@@ -55,7 +55,7 @@ def get_ledger(
 ) -> PublicLedgerResponse:
     items = [
         RewardLedgerRead.model_validate(item)
-        for item in service.list_reward_ledger(limit, user=bootstrap_user)
+        for item in service.list_reward_ledger(limit=limit, user=bootstrap_user)
     ]
     return PublicLedgerResponse(readOnly=True, items=items)
 
@@ -82,6 +82,6 @@ def get_templates(
 ) -> PublicTemplatesResponse:
     items = [
         TaskTemplateRead.model_validate(template)
-        for template in service.list_templates(project_id=project_id, user=bootstrap_user)
+        for template in service.list_templates(user=bootstrap_user, project_id=project_id)
     ]
     return PublicTemplatesResponse(readOnly=True, items=items)

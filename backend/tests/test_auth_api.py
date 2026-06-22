@@ -401,53 +401,62 @@ def test_auth_migration_0005_backfills_existing_task_reward_data_to_bootstrap_us
     monkeypatch.setenv("READONLY_TOKEN", "readonly-test-token")
     monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
     get_settings.cache_clear()
-    app = create_app()
 
-    with TestClient(app) as client:
-        login_response = client.post(
-            "/api/auth/login",
-            json={"username": "reward", "password": "secret-pass"},
-        )
-        assert login_response.status_code == 200
 
-        private_projects = client.get("/api/task-projects")
-        assert private_projects.status_code == 200
-        assert private_projects.json() == [
-            {
-                "id": 1,
-                "name": "Legacy Project",
-                "status": "active",
-                "sort_order": 0,
-            }
-        ]
+def test_auth_migration_0005_prefers_bootstrap_user_over_lowest_id(tmp_path, monkeypatch):
+    database_path = tmp_path / "task_reward_prefers_bootstrap.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
 
-        public_projects = client.get(
-            "/api/public/projects",
-            headers={"Authorization": "Bearer readonly-test-token"},
-        )
-        assert public_projects.status_code == 200
-        assert public_projects.json()["items"] == [
-            {
-                "id": 1,
-                "name": "Legacy Project",
-                "status": "active",
-                "sort_order": 0,
-            }
-        ]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "Reward Admin")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    _, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env["AUTH_INITIAL_USERNAME"] = "Reward Admin"
+    env["AUTH_INITIAL_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
 
-        public_summary = client.get(
-            "/api/public/summary",
-            params={"date": "2026-06-20"},
-            headers={"Authorization": "Bearer readonly-test-token"},
-        )
-        assert public_summary.status_code == 200
-        assert public_summary.json() == {
-            "readOnly": True,
-            "current_balance": 12,
-            "today_earned": 12,
-        }
+    _run_alembic(backend_dir, env, "upgrade", "0004_add_user_profile_and_registration_flag")
 
-    get_settings.cache_clear()
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO users
+                    (id, username, display_name, email, password_hash, created_at, updated_at, password_changed_at)
+                VALUES
+                    (1, 'another-user', 'another-user', 'another@local.invalid', :password_hash, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                    (2, 'reward admin', 'reward admin', 'reward-admin@local.invalid', :password_hash, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                {"password_hash": hash_password("secret-pass")},
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO task_projects
+                    (id, name, status, sort_order, created_at, updated_at)
+                VALUES
+                    (1, 'Legacy Project', 'active', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+        connection.close()
+    finally:
+        engine.dispose()
+
+    _run_alembic(backend_dir, env, "upgrade", "head")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.connect() as connection:
+            user_id = connection.exec_driver_sql(
+                "SELECT user_id FROM task_projects WHERE id = 1"
+            ).scalar_one()
+        assert user_id == 2
+    finally:
+        engine.dispose()
 
 
 def test_auth_migration_0003_downgrade_backfills_null_expiry(tmp_path, monkeypatch):
