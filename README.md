@@ -59,8 +59,16 @@ cd backend
 
 ```bash
 cd backend
-./.venv/bin/python scripts/migrate_from_lifeboard.py --source-db-url 'postgresql+asyncpg://lifeboard:lifeboard@localhost:5432/lifeboard'
+./.venv/bin/python scripts/migrate_from_lifeboard.py \
+  --source-db-url 'postgresql+asyncpg://lifeboard:lifeboard@localhost:5432/lifeboard' \
+  --target-username reward
 ```
+
+说明：
+
+- 导入脚本会把 `lifeboard` 的整套任务/模板/每日任务/奖励流水导入到一个目标账号下，并补齐当前 schema 需要的 `user_id`。
+- 导入前只会清空目标账号自己现有的任务奖励数据，不会影响其他账号的数据。
+- 如果当前库里只有一个账号，或 `AUTH_INITIAL_USERNAME` 指向的账号存在，可以省略 `--target-username`；只要库里有多个账号且无法唯一推断目标账号，就必须显式传入。
 
 启动后访问：
 
