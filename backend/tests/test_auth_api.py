@@ -403,6 +403,103 @@ def test_auth_migration_0005_backfills_existing_task_reward_data_to_bootstrap_us
     get_settings.cache_clear()
 
 
+def test_auth_migration_0005_creates_bootstrap_user_when_legacy_data_exists_without_users(
+    tmp_path,
+    monkeypatch,
+):
+    database_path = tmp_path / "task_reward_creates_bootstrap_user.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "Reward Admin")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    _, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env["AUTH_INITIAL_USERNAME"] = "Reward Admin"
+    env["AUTH_INITIAL_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
+
+    _run_alembic(backend_dir, env, "upgrade", "0004_add_user_profile_and_registration_flag")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                INSERT INTO task_projects
+                    (id, name, status, sort_order, created_at, updated_at)
+                VALUES
+                    (1, 'Legacy Project', 'active', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO task_templates
+                    (id, project_id, name, default_estimated_duration_minutes, default_reward_amount, notes, is_active, created_at, updated_at)
+                VALUES
+                    (1, 1, 'Legacy Template', 30, 12, '', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO daily_tasks
+                    (id, date, project_id, task_template_id, name_snapshot, estimated_duration_minutes_snapshot,
+                     reward_amount_snapshot, status, actual_duration_minutes, completed_at, created_at, updated_at)
+                VALUES
+                    (1, '2026-06-20', 1, 1, 'Legacy Template', 30, 12, 'completed', 28, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO reward_ledger
+                    (id, entry_type, amount, reason, daily_task_id, created_at)
+                VALUES
+                    (1, 'earn', 12, 'Legacy Template', 1, CURRENT_TIMESTAMP)
+                """
+            )
+    finally:
+        engine.dispose()
+
+    _run_alembic(backend_dir, env, "upgrade", "head")
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.connect() as connection:
+            user_row = connection.exec_driver_sql(
+                """
+                SELECT id, username, display_name, email, password_hash
+                FROM users
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            ).mappings().one()
+            ownership_row = connection.exec_driver_sql(
+                """
+                SELECT
+                    task_projects.user_id AS project_user_id,
+                    daily_tasks.user_id AS task_user_id,
+                    reward_ledger.user_id AS ledger_user_id
+                FROM task_projects
+                JOIN daily_tasks ON daily_tasks.project_id = task_projects.id
+                JOIN reward_ledger ON reward_ledger.daily_task_id = daily_tasks.id
+                WHERE task_projects.id = 1
+                """
+            ).mappings().one()
+
+        assert user_row["username"] == "reward admin"
+        assert user_row["display_name"] == "reward admin"
+        assert user_row["email"] == "reward admin@local.invalid"
+        assert verify_password("secret-pass", user_row["password_hash"]) is True
+        assert ownership_row["project_user_id"] == user_row["id"]
+        assert ownership_row["task_user_id"] == user_row["id"]
+        assert ownership_row["ledger_user_id"] == user_row["id"]
+    finally:
+        engine.dispose()
+
+
 def test_auth_migration_0005_prefers_bootstrap_user_over_lowest_id(tmp_path, monkeypatch):
     database_path = tmp_path / "task_reward_prefers_bootstrap.db"
     database_url = f"sqlite:///{database_path}"
