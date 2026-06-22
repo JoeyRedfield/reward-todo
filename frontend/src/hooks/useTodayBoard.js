@@ -4,6 +4,7 @@ import {
   fetchDailyTasks,
   fetchRewardSummary,
   getErrorMessage,
+  reopenDailyTask,
 } from "../api/client";
 import { formatLocalDate } from "../utils/date";
 
@@ -17,7 +18,7 @@ export default function useTodayBoard() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [finishingTaskId, setFinishingTaskId] = useState(null);
+  const [pendingTaskId, setPendingTaskId] = useState(null);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -42,7 +43,7 @@ export default function useTodayBoard() {
   }, [loadBoard]);
 
   const finishTask = useCallback(async (taskId, actualDurationMinutes) => {
-    setFinishingTaskId(taskId);
+    setPendingTaskId(taskId);
     setError(null);
     try {
       await completeDailyTask(taskId, actualDurationMinutes);
@@ -51,7 +52,21 @@ export default function useTodayBoard() {
       setError(getErrorMessage(finishError, "任务完成失败，请稍后再试。"));
       throw finishError;
     } finally {
-      setFinishingTaskId(null);
+      setPendingTaskId(null);
+    }
+  }, [loadBoard]);
+
+  const reopenTask = useCallback(async (taskId) => {
+    setPendingTaskId(taskId);
+    setError(null);
+    try {
+      await reopenDailyTask(taskId);
+      await loadBoard();
+    } catch (reopenError) {
+      setError(getErrorMessage(reopenError, "撤销失败，请稍后再试。"));
+      throw reopenError;
+    } finally {
+      setPendingTaskId(null);
     }
   }, [loadBoard]);
 
@@ -60,8 +75,9 @@ export default function useTodayBoard() {
     summary,
     loading,
     error,
-    finishingTaskId,
+    pendingTaskId,
     finishTask,
+    reopenTask,
     reload: loadBoard,
   };
 }

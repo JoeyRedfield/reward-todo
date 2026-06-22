@@ -32,6 +32,7 @@ const apiMocks = vi.hoisted(() => ({
   fetchDailyTasksMock: vi.fn(),
   fetchRewardSummaryMock: vi.fn(),
   completeDailyTaskMock: vi.fn(),
+  reopenDailyTaskMock: vi.fn(),
   fetchProjectsMock: vi.fn(),
   fetchTaskTemplatesMock: vi.fn(),
   createProjectMock: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("./api/client", () => ({
   fetchDailyTasks: apiMocks.fetchDailyTasksMock,
   fetchRewardSummary: apiMocks.fetchRewardSummaryMock,
   completeDailyTask: apiMocks.completeDailyTaskMock,
+  reopenDailyTask: apiMocks.reopenDailyTaskMock,
   fetchProjects: apiMocks.fetchProjectsMock,
   fetchTaskTemplates: apiMocks.fetchTaskTemplatesMock,
   createProject: apiMocks.createProjectMock,
@@ -125,6 +127,7 @@ beforeEach(() => {
     today_earned: 0,
   });
   apiMocks.completeDailyTaskMock.mockResolvedValue(null);
+  apiMocks.reopenDailyTaskMock.mockResolvedValue(null);
   apiMocks.fetchProjectsMock.mockResolvedValue([
     { id: 1, name: "健身", status: "active", sort_order: 0 },
   ]);

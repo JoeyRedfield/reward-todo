@@ -15,20 +15,30 @@ const task = {
   completed_at: null,
 };
 
+const completedTask = {
+  ...task,
+  status: "completed",
+  actual_duration_minutes: 28,
+  completed_at: "2026-06-21T10:00:00Z",
+};
+
 const {
   fetchDailyTasksMock,
   fetchRewardSummaryMock,
   completeDailyTaskMock,
+  reopenDailyTaskMock,
 } = vi.hoisted(() => ({
   fetchDailyTasksMock: vi.fn(),
   fetchRewardSummaryMock: vi.fn(),
   completeDailyTaskMock: vi.fn(),
+  reopenDailyTaskMock: vi.fn(),
 }));
 
 vi.mock("../api/client", () => ({
   fetchDailyTasks: fetchDailyTasksMock,
   fetchRewardSummary: fetchRewardSummaryMock,
   completeDailyTask: completeDailyTaskMock,
+  reopenDailyTask: reopenDailyTaskMock,
   getErrorMessage: (error, fallback) => error?.message || fallback,
 }));
 
@@ -40,11 +50,9 @@ beforeEach(() => {
     today_earned: 0,
   });
   completeDailyTaskMock.mockResolvedValue({
-    ...task,
-    status: "completed",
-    actual_duration_minutes: 28,
-    completed_at: "2026-06-21T10:00:00Z",
+    ...completedTask,
   });
+  reopenDailyTaskMock.mockResolvedValue(task);
 });
 
 test("shows today board data", async () => {
@@ -56,14 +64,7 @@ test("shows today board data", async () => {
 test("completes a task and refreshes board", async () => {
   fetchDailyTasksMock
     .mockResolvedValueOnce([task])
-    .mockResolvedValueOnce([
-      {
-        ...task,
-        status: "completed",
-        actual_duration_minutes: 28,
-        completed_at: "2026-06-21T10:00:00Z",
-      },
-    ]);
+    .mockResolvedValueOnce([completedTask]);
   fetchRewardSummaryMock
     .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 })
     .mockResolvedValueOnce({ current_balance: 2000, today_earned: 2000 });
@@ -79,4 +80,39 @@ test("completes a task and refreshes board", async () => {
   await waitFor(() => {
     expect(screen.getByText("已完成")).toBeInTheDocument();
   });
+});
+
+test("shows reopen action for completed tasks", async () => {
+  fetchDailyTasksMock.mockResolvedValue([completedTask]);
+
+  render(<TodayPage />);
+
+  expect(await screen.findByRole("button", { name: "撤销完成" })).toBeInTheDocument();
+});
+
+test("reopens a task and refreshes board", async () => {
+  fetchDailyTasksMock
+    .mockResolvedValueOnce([completedTask])
+    .mockResolvedValueOnce([task]);
+  fetchRewardSummaryMock
+    .mockResolvedValueOnce({ current_balance: 2000, today_earned: 2000 })
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 });
+
+  render(<TodayPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "撤销完成" }));
+
+  await waitFor(() => {
+    expect(reopenDailyTaskMock).toHaveBeenCalledWith(1);
+    expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
+  });
+});
+
+test("shows error when reopen fails", async () => {
+  fetchDailyTasksMock.mockResolvedValue([completedTask]);
+  reopenDailyTaskMock.mockRejectedValue(new Error("撤销失败"));
+
+  render(<TodayPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "撤销完成" }));
+
+  expect(await screen.findByText("撤销失败")).toBeInTheDocument();
 });

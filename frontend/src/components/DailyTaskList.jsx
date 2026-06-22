@@ -13,8 +13,9 @@ function parsePositiveInteger(value) {
 
 export default function DailyTaskList({
   tasks,
-  finishingTaskId,
+  pendingTaskId,
   onFinishTask,
+  onReopenTask,
 }) {
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [actualDurationValue, setActualDurationValue] = useState("");
@@ -67,7 +68,7 @@ export default function DailyTaskList({
         {tasks.map((task) => {
           const isCompleted = task.status === "completed";
           const isExpanded = expandedTaskId === task.id;
-          const isSubmitting = finishingTaskId === task.id;
+          const isSubmitting = pendingTaskId === task.id;
 
           return (
             <article
@@ -83,7 +84,18 @@ export default function DailyTaskList({
                   </div>
                 </div>
                 {isCompleted ? (
-                  <span className="status-pill">已完成</span>
+                  <div className="task-status-actions">
+                    <span className="status-pill">已完成</span>
+                    <button
+                      className="ghost-button"
+                      onClick={() => {
+                        void onReopenTask(task.id).catch(() => {});
+                      }}
+                      disabled={pendingTaskId !== null}
+                    >
+                      {isSubmitting ? "撤销中..." : "撤销完成"}
+                    </button>
+                  </div>
                 ) : (
                   <button
                     className="primary-button"
@@ -92,7 +104,7 @@ export default function DailyTaskList({
                       setActualDurationValue("");
                       setSubmitError(null);
                     }}
-                    disabled={finishingTaskId !== null}
+                    disabled={pendingTaskId !== null}
                   >
                     完成
                   </button>

@@ -3,8 +3,15 @@ import TaskSummaryCards from "../components/TaskSummaryCards";
 import useTodayBoard from "../hooks/useTodayBoard";
 
 export default function TodayPage() {
-  const { tasks, summary, loading, error, finishingTaskId, finishTask } =
-    useTodayBoard();
+  const {
+    tasks,
+    summary,
+    loading,
+    error,
+    pendingTaskId,
+    finishTask,
+    reopenTask,
+  } = useTodayBoard();
 
   return (
     <div className="page-stack">
@@ -26,8 +33,9 @@ export default function TodayPage() {
           {error ? <div className="error-banner">{error}</div> : null}
           <DailyTaskList
             tasks={tasks}
-            finishingTaskId={finishingTaskId}
+            pendingTaskId={pendingTaskId}
             onFinishTask={finishTask}
+            onReopenTask={reopenTask}
           />
         </>
       )}
