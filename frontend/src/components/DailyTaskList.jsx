@@ -12,10 +12,12 @@ function parsePositiveInteger(value) {
 }
 
 export default function DailyTaskList({
+  emptyText = "今天还没有安排任务。",
   tasks,
   pendingTaskId,
   onFinishTask,
   onReopenTask,
+  title = "当日任务",
 }) {
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [actualDurationValue, setActualDurationValue] = useState("");
@@ -52,9 +54,9 @@ export default function DailyTaskList({
     return (
       <section className="panel">
         <div className="panel-head">
-          <h2>今日任务</h2>
+          <h2>{title}</h2>
         </div>
-        <p className="empty-copy">今天还没有安排任务。</p>
+        <p className="empty-copy">{emptyText}</p>
       </section>
     );
   }
@@ -62,7 +64,7 @@ export default function DailyTaskList({
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>今日任务</h2>
+        <h2>{title}</h2>
       </div>
       <div className="task-list">
         {tasks.map((task) => {

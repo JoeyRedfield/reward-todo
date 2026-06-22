@@ -101,6 +101,39 @@ def test_reopen_daily_task_reverses_balance(db_session) -> None:
     ]
 
 
+def test_list_daily_task_calendar_returns_dates_with_task_counts(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
+    first_task = service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=30,
+        reward_amount=2000,
+    )
+    second_task = service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 22),
+        estimated_duration_minutes=20,
+        reward_amount=1200,
+    )
+    service.complete_daily_task(second_task.id, user=user, actual_duration_minutes=19)
+
+    summary = service.list_daily_task_calendar(
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 30),
+        user=user,
+    )
+
+    assert first_task.status == "pending"
+    assert summary == [
+        {"date": date(2026, 6, 20), "task_count": 1, "completed_count": 0},
+        {"date": date(2026, 6, 22), "task_count": 1, "completed_count": 1},
+    ]
+
+
 def test_spend_reward_insufficient_balance_rejects(db_session) -> None:
     service = TaskRewardService(db_session)
     user = _create_user(db_session)

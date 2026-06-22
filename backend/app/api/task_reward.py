@@ -7,6 +7,7 @@ from app.dependencies import get_task_reward_service, require_authenticated_user
 from app.models import User
 from app.schemas.task_reward import (
     CompleteDailyTaskRequest,
+    DailyTaskCalendarDayRead,
     DailyTaskCreate,
     DailyTaskRead,
     RewardLedgerRead,
@@ -123,6 +124,20 @@ def get_daily_tasks(
     return service.list_daily_tasks(date, user=user)
 
 
+@router.get("/daily-tasks/calendar", response_model=list[DailyTaskCalendarDayRead])
+def get_daily_task_calendar(
+    start: datetime.date = Query(...),
+    end: datetime.date = Query(...),
+    authenticated: tuple[User, str] = Depends(require_authenticated_user),
+    service: TaskRewardService = Depends(get_task_reward_service),
+):
+    user, _ = authenticated
+    try:
+        return service.list_daily_task_calendar(start_date=start, end_date=end, user=user)
+    except ValueError as exc:
+        _raise_http_error(exc)
+
+
 @router.post("/daily-tasks", response_model=DailyTaskRead)
 def create_daily_task(
     payload: DailyTaskCreate,
@@ -169,11 +184,12 @@ def reopen_daily_task(
 
 @router.get("/rewards/summary", response_model=RewardSummaryRead)
 def reward_summary(
+    date: Optional[datetime.date] = Query(default=None),
     authenticated: tuple[User, str] = Depends(require_authenticated_user),
     service: TaskRewardService = Depends(get_task_reward_service),
 ):
     user, _ = authenticated
-    return service.get_reward_summary(user=user, date=datetime.date.today())
+    return service.get_reward_summary(user=user, date=date)
 
 
 @router.get("/rewards/ledger", response_model=list[RewardLedgerRead])

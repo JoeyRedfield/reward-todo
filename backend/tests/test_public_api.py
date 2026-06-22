@@ -112,6 +112,98 @@ def test_private_reward_summary_rolls_back_today_earned_after_reopen(client, db_
     }
 
 
+def test_private_reward_summary_accepts_selected_date(client, db_session) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    service = TaskRewardService(db_session)
+    project = service.create_project(name="健身", user=user)
+    template = service.create_task_template(
+        user=user,
+        project_id=project.id,
+        name="拉伸 15 分钟",
+        default_estimated_duration_minutes=15,
+        default_reward_amount=800,
+        notes="晨间拉伸",
+        is_active=True,
+    )
+    first_task = service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=20,
+        reward_amount=800,
+    )
+    second_task = service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 21),
+        estimated_duration_minutes=30,
+        reward_amount=1500,
+    )
+    service.complete_daily_task(first_task.id, user=user, actual_duration_minutes=18)
+    service.complete_daily_task(second_task.id, user=user, actual_duration_minutes=28)
+
+    response = client.get("/api/rewards/summary", params={"date": "2026-06-21"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "current_balance": 2300,
+        "today_earned": 1500,
+    }
+
+
+def test_private_daily_task_calendar_returns_marked_dates(client, db_session) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    service = TaskRewardService(db_session)
+    project = service.create_project(name="健身", user=user)
+    template = service.create_task_template(
+        user=user,
+        project_id=project.id,
+        name="拉伸 15 分钟",
+        default_estimated_duration_minutes=15,
+        default_reward_amount=800,
+        notes="晨间拉伸",
+        is_active=True,
+    )
+    service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=20,
+        reward_amount=1000,
+    )
+    completed_task = service.create_daily_task(
+        user=user,
+        task_template_id=template.id,
+        date=date(2026, 6, 22),
+        estimated_duration_minutes=25,
+        reward_amount=1200,
+    )
+    service.complete_daily_task(completed_task.id, user=user, actual_duration_minutes=24)
+
+    response = client.get(
+        "/api/daily-tasks/calendar",
+        params={"start": "2026-06-01", "end": "2026-06-30"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"date": "2026-06-20", "task_count": 1, "completed_count": 0},
+        {"date": "2026-06-22", "task_count": 1, "completed_count": 1},
+    ]
+
+
 def test_public_today_returns_snapshot_based_task_payload(client, db_session) -> None:
     login_response = client.post(
         "/api/auth/login",
