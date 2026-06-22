@@ -42,7 +42,7 @@
 - Test: `frontend/src/api/client.test.js`
 - Test: `frontend/src/pages/Today.test.jsx`
 
-- [ ] **Step 1: 为 client 测试补上 reopen 场景**
+- [x] **Step 1: 为 client 测试补上 reopen 场景**
 
 ```javascript
 test("reopens a completed task with POST request", async () => {
@@ -64,7 +64,7 @@ test("reopens a completed task with POST request", async () => {
 });
 ```
 
-- [ ] **Step 2: 为 Today 页面写失败测试，定义已完成任务显示撤销入口**
+- [x] **Step 2: 为 Today 页面写失败测试，定义已完成任务显示撤销入口**
 
 ```javascript
 test("shows reopen action for completed tasks", async () => {
@@ -78,7 +78,7 @@ test("shows reopen action for completed tasks", async () => {
 });
 ```
 
-- [ ] **Step 3: 为 Today 页面写失败测试，定义撤销成功后列表和奖励汇总刷新**
+- [x] **Step 3: 为 Today 页面写失败测试，定义撤销成功后列表和奖励汇总刷新**
 
 ```javascript
 test("reopens a task and refreshes board", async () => {
@@ -99,7 +99,7 @@ test("reopens a task and refreshes board", async () => {
 });
 ```
 
-- [ ] **Step 4: 为 Today 页面写失败测试，定义撤销失败时保留错误提示**
+- [x] **Step 4: 为 Today 页面写失败测试，定义撤销失败时保留错误提示**
 
 ```javascript
 test("shows error when reopen fails", async () => {
@@ -115,7 +115,7 @@ test("shows error when reopen fails", async () => {
 });
 ```
 
-- [ ] **Step 5: 运行定向前端测试，确认当前为红灯**
+- [x] **Step 5: 运行定向前端测试，确认当前为红灯**
 
 Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run src/api/client.test.js src/pages/Today.test.jsx src/App.test.jsx`  
 Expected: 至少包含 `reopenDailyTask` 未定义或页面缺少撤销按钮的失败
@@ -128,7 +128,7 @@ Expected: 至少包含 `reopenDailyTask` 未定义或页面缺少撤销按钮的
 - Modify: `frontend/src/components/DailyTaskList.jsx`
 - Modify: `frontend/src/pages/Today.jsx`
 
-- [ ] **Step 1: 在 client 中补齐 reopen API**
+- [x] **Step 1: 在 client 中补齐 reopen API**
 
 ```javascript
 export async function reopenDailyTask(taskId) {
@@ -138,7 +138,7 @@ export async function reopenDailyTask(taskId) {
 }
 ```
 
-- [ ] **Step 2: 在 Today hook 中统一完成与撤销中的任务状态**
+- [x] **Step 2: 在 Today hook 中统一完成与撤销中的任务状态**
 
 ```javascript
 const [pendingTaskId, setPendingTaskId] = useState(null);
@@ -160,7 +160,7 @@ const reopenTask = useCallback(async (taskId) => {
 
 Implementation note: 可以把原 `finishingTaskId` 重命名成更中性的 `pendingTaskId`，避免完成与撤销各维护一套状态。
 
-- [ ] **Step 3: 在列表组件中为已完成任务渲染撤销入口**
+- [x] **Step 3: 在列表组件中为已完成任务渲染撤销入口**
 
 ```javascript
 {isCompleted ? (
@@ -180,7 +180,7 @@ Implementation note: 可以把原 `finishingTaskId` 重命名成更中性的 `pe
 
 Implementation note: 保留已完成状态 pill；撤销后依赖 `loadBoard()` 回到未完成视图，不在组件内手工拼接假状态。
 
-- [ ] **Step 4: 在页面组件中透传撤销动作与统一中的状态**
+- [x] **Step 4: 在页面组件中透传撤销动作与统一中的状态**
 
 ```javascript
 const { tasks, summary, loading, error, pendingTaskId, finishTask, reopenTask } =
@@ -194,7 +194,7 @@ const { tasks, summary, loading, error, pendingTaskId, finishTask, reopenTask } 
 />
 ```
 
-- [ ] **Step 5: 运行定向前端测试，确认行为转绿**
+- [x] **Step 5: 运行定向前端测试，确认行为转绿**
 
 Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run src/api/client.test.js src/pages/Today.test.jsx src/App.test.jsx`  
 Expected: reopen 相关测试通过，原有 Today / App 用例无回归
@@ -204,17 +204,17 @@ Expected: reopen 相关测试通过，原有 Today / App 用例无回归
 **Files:**
 - Modify: `docs/superpowers/plans/2026-06-22-issue-1-today-reopen-implementation.md`
 
-- [ ] **Step 1: 运行完整前端测试**
+- [x] **Step 1: 运行完整前端测试**
 
 Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/frontend && npm test -- --run`  
 Expected: 全部通过
 
-- [ ] **Step 2: 运行完整后端测试，确认前端改动未影响既有链路**
+- [x] **Step 2: 运行完整后端测试，确认前端改动未影响既有链路**
 
 Run: `cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task/backend && AUTH_DATABASE_URL=sqlite:///./test.db /Users/wuzhuoyi/Desktop/code/reward-todo/backend/.venv/bin/pytest`  
 Expected: 全部通过
 
-- [ ] **Step 3: 更新计划勾选并提交**
+- [x] **Step 3: 更新计划勾选并提交**
 
 ```bash
 cd /Users/wuzhuoyi/.config/superpowers/worktrees/reward-todo/codex-issue-1-reopen-today-task

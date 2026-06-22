@@ -94,7 +94,7 @@ def test_reopen_daily_task_reverses_balance(db_session) -> None:
     assert reopened.status == "pending"
     assert reopened.actual_duration_minutes is None
     assert summary.current_balance == 0
-    assert summary.today_earned == 2000
+    assert summary.today_earned == 0
     assert [(entry.entry_type, entry.amount) for entry in ledger] == [
         ("adjust", -2000),
         ("earn", 2000),

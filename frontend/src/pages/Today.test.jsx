@@ -104,6 +104,8 @@ test("reopens a task and refreshes board", async () => {
   await waitFor(() => {
     expect(reopenDailyTaskMock).toHaveBeenCalledWith(1);
     expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
+    expect(screen.getAllByText("¥0.00")).toHaveLength(2);
+    expect(screen.queryByText("实际时长 28 分钟")).not.toBeInTheDocument();
   });
 });
 
