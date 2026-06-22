@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 function resolveRedirectPath(rawRedirect) {
@@ -48,36 +48,54 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
-        <div className="page-kicker">Login</div>
-        <h1>登录</h1>
-        <p className="auth-copy">使用你的 Reward Todo 账户继续访问任务与奖励数据。</p>
-        {sessionExpired ? (
-          <div className="error-banner">登录已失效，请重新登录</div>
-        ) : null}
-        {error ? <div className="error-banner">{error}</div> : null}
-        <label>
-          用户名
-          <input
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-          />
-        </label>
-        <label>
-          密码
-          <input
-            autoComplete="current-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
-        <button className="primary-button" disabled={submitting} type="submit">
-          {submitting ? "登录中..." : "登录"}
-        </button>
-      </form>
+    <div className="auth-page auth-page--product">
+      <div className="auth-card-shell">
+        <div className="auth-intro">
+          <div className="page-kicker">Reward Todo</div>
+          <h1>登录</h1>
+          <p className="auth-copy">
+            继续你的任务和奖励工作台。
+          </p>
+          <div className="auth-intro-list">
+            <div className="auth-intro-item">今天任务、奖励余额、项目安排在同一个入口继续。</div>
+            <div className="auth-intro-item">登录后会回到你刚才想访问的页面，不会打断当前流程。</div>
+          </div>
+        </div>
+        <form className="auth-card" onSubmit={handleSubmit}>
+          <div className="auth-form-head">
+            <h2>欢迎回来</h2>
+            <p>使用你的账号继续管理每日任务、奖励和工作区。</p>
+          </div>
+          {sessionExpired ? (
+            <div className="error-banner">登录已失效，请重新登录</div>
+          ) : null}
+          {error ? <div className="error-banner">{error}</div> : null}
+          <label>
+            用户名
+            <input
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+            />
+          </label>
+          <label>
+            密码
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          <button className="primary-button" disabled={submitting} type="submit">
+            {submitting ? "登录中..." : "登录"}
+          </button>
+          <div className="auth-link-row">
+            <span>没有账号？</span>
+            <Link to="/signup">创建账号</Link>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

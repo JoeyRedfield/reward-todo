@@ -76,6 +76,9 @@ test("shows session expired message and clears flag on submit", async () => {
   renderLogin();
 
   expect(screen.getByText("登录已失效，请重新登录")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "创建账号" })
+  ).toHaveAttribute("href", "/signup");
   fireEvent.change(screen.getByLabelText("用户名"), {
     target: { value: "reward" },
   });
@@ -112,4 +115,13 @@ test("falls back to /today for unsafe redirect targets", async () => {
   renderLogin("/login?redirect=%2F%2Fevil.example");
 
   expect(await screen.findByText("today page")).toBeInTheDocument();
+});
+
+test("shows signup entry on login page", () => {
+  renderLogin();
+
+  expect(screen.getByText("继续你的任务和奖励工作台。")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "创建账号" })
+  ).toHaveAttribute("href", "/signup");
 });

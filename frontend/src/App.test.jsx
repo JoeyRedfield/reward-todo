@@ -189,7 +189,8 @@ test("renders signup page at /signup", async () => {
   renderAt("/signup");
 
   expect(await screen.findByRole("heading", { name: "创建账号" })).toBeInTheDocument();
-  expect(screen.getByText("步骤 1 / 2")).toBeInTheDocument();
+  expect(screen.getByText("第 1 步，共 3 步")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "基础信息" })).toBeInTheDocument();
 });
 
 test("moves signup flow to next step after submitting basic info", async () => {
@@ -215,7 +216,8 @@ test("moves signup flow to next step after submitting basic info", async () => {
 
   await waitFor(() => {
     expect(apiMocks.registerMock).not.toHaveBeenCalled();
-    expect(screen.getByText("步骤 2 / 2")).toBeInTheDocument();
+    expect(screen.getByText("第 2 步，共 3 步")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "初始化工作台" })).toBeInTheDocument();
     expect(screen.getByText("创建默认工作区")).toBeInTheDocument();
   });
 
@@ -230,6 +232,16 @@ test("moves signup flow to next step after submitting basic info", async () => {
       confirm_password: "super-secret",
       create_default_workspace: true,
     });
+    expect(screen.getByText("第 3 步，共 3 步")).toBeInTheDocument();
+    expect(screen.getByText("账号创建成功")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "进入今日面板" })
+    ).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "进入今日面板" }));
+
+  await waitFor(() => {
     expect(screen.getByText("今天还没有安排任务。")).toBeInTheDocument();
   });
 });
@@ -298,7 +310,7 @@ test("shows password change success feedback", async () => {
   fireEvent.change(screen.getByLabelText("确认新密码"), {
     target: { value: "new-secret1" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "确认修改" }));
+  fireEvent.click(screen.getByRole("button", { name: "更新密码" }));
 
   await waitFor(() => {
     expect(screen.getByText("密码已更新")).toBeInTheDocument();
@@ -321,7 +333,7 @@ test("shows password change error feedback", async () => {
   fireEvent.change(screen.getByLabelText("确认新密码"), {
     target: { value: "new-secret1" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "确认修改" }));
+  fireEvent.click(screen.getByRole("button", { name: "更新密码" }));
 
   await waitFor(() => {
     expect(screen.getByText("当前密码错误")).toBeInTheDocument();
