@@ -1,6 +1,6 @@
 import datetime
 from typing import Optional
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -144,6 +144,44 @@ class TaskRewardService:
         return self.session.scalars(
             statement.order_by(DailyTask.created_at.asc(), DailyTask.id.asc())
         ).all()
+
+    def list_daily_task_calendar(
+        self,
+        start_date: datetime.date,
+        end_date: datetime.date,
+        user: User,
+    ) -> list[dict[str, object]]:
+        if end_date < start_date:
+            raise ValueError("结束日期不能早于开始日期")
+
+        statement = (
+            select(
+                DailyTask.date.label("date"),
+                func.count(DailyTask.id).label("task_count"),
+                func.sum(
+                    case(
+                        (DailyTask.status == "completed", 1),
+                        else_=0,
+                    )
+                ).label("completed_count"),
+            )
+            .where(
+                DailyTask.user_id == user.id,
+                DailyTask.date >= start_date,
+                DailyTask.date <= end_date,
+            )
+            .group_by(DailyTask.date)
+            .order_by(DailyTask.date.asc())
+        )
+        rows = self.session.execute(statement).all()
+        return [
+            {
+                "date": row.date,
+                "task_count": int(row.task_count or 0),
+                "completed_count": int(row.completed_count or 0),
+            }
+            for row in rows
+        ]
 
     def complete_daily_task(
         self,

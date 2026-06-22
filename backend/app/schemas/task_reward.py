@@ -88,6 +88,12 @@ class DailyTaskRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DailyTaskCalendarDayRead(BaseModel):
+    date: date
+    task_count: int
+    completed_count: int
+
+
 class RewardSummaryRead(BaseModel):
     current_balance: int
     today_earned: int

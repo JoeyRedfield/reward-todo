@@ -150,8 +150,15 @@ export async function reopenDailyTask(taskId) {
   });
 }
 
-export async function fetchRewardSummary() {
-  return request("/rewards/summary");
+export async function fetchRewardSummary(date) {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  return request(`/rewards/summary${query}`);
+}
+
+export async function fetchDailyTaskCalendar(start, end) {
+  return request(
+    `/daily-tasks/calendar?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+  );
 }
 
 export async function fetchRewardLedger(limit = 20) {

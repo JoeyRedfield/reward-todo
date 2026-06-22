@@ -30,6 +30,7 @@ const apiMocks = vi.hoisted(() => ({
   logoutMock: vi.fn(),
   changePasswordMock: vi.fn(),
   fetchDailyTasksMock: vi.fn(),
+  fetchDailyTaskCalendarMock: vi.fn(),
   fetchRewardSummaryMock: vi.fn(),
   completeDailyTaskMock: vi.fn(),
   reopenDailyTaskMock: vi.fn(),
@@ -59,6 +60,7 @@ vi.mock("./api/client", () => ({
   logout: apiMocks.logoutMock,
   changePassword: apiMocks.changePasswordMock,
   fetchDailyTasks: apiMocks.fetchDailyTasksMock,
+  fetchDailyTaskCalendar: apiMocks.fetchDailyTaskCalendarMock,
   fetchRewardSummary: apiMocks.fetchRewardSummaryMock,
   completeDailyTask: apiMocks.completeDailyTaskMock,
   reopenDailyTask: apiMocks.reopenDailyTaskMock,
@@ -122,6 +124,7 @@ beforeEach(() => {
   });
 
   apiMocks.fetchDailyTasksMock.mockResolvedValue([]);
+  apiMocks.fetchDailyTaskCalendarMock.mockResolvedValue([]);
   apiMocks.fetchRewardSummaryMock.mockResolvedValue({
     current_balance: 0,
     today_earned: 0,

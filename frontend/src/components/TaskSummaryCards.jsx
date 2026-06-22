@@ -20,16 +20,16 @@ export default function TaskSummaryCards({ summary, tasks }) {
     {
       serial: "EARNED",
       tone: "copper",
-      label: "今日已赚",
+      label: "当日已赚",
       value: formatYuan(summary.today_earned),
-      hint: "来自已完成任务",
+      hint: "来自当前选中日期的已完成任务",
     },
     {
       serial: "PROGRESS",
       tone: "plum",
-      label: "今日进度",
+      label: "当日进度",
       value: `${completedCount} / ${tasks.length}`,
-      hint: tasks.length === 0 ? "今天还没有任务" : "按任务条目统计",
+      hint: tasks.length === 0 ? "当前日期还没有任务" : "按当前日期的任务条目统计",
     },
     {
       serial: "MINUTES",
