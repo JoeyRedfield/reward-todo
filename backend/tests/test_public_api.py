@@ -340,3 +340,122 @@ def test_task_reward_endpoints_isolate_projects_tasks_and_rewards_between_users(
     alice_summary_again = client.get("/api/rewards/summary")
     assert alice_summary_again.status_code == 200
     assert alice_summary_again.json()["current_balance"] == 8
+
+
+def test_public_endpoints_only_expose_bootstrap_user_data(client, db_session) -> None:
+    bootstrap_login = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert bootstrap_login.status_code == 200
+    bootstrap_user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert bootstrap_user is not None
+    _, bootstrap_project, bootstrap_template, bootstrap_task = _seed_data(db_session, user=bootstrap_user)
+
+    client.post("/api/auth/logout")
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "alice",
+            "display_name": "Alice",
+            "email": "alice@example.com",
+            "password": "alice-pass1",
+            "confirm_password": "alice-pass1",
+            "create_default_workspace": True,
+        },
+    )
+    assert register_response.status_code == 200
+
+    alice_projects_response = client.get("/api/task-projects")
+    assert alice_projects_response.status_code == 200
+    alice_project_ids = [item["id"] for item in alice_projects_response.json()]
+    alice_templates_response = client.get("/api/task-templates", params={"project_id": alice_project_ids[0]})
+    assert alice_templates_response.status_code == 200
+    alice_template_id = alice_templates_response.json()[0]["id"]
+    alice_task_response = client.post(
+        "/api/daily-tasks",
+        json={
+            "task_template_id": alice_template_id,
+            "date": "2026-06-20",
+            "estimated_duration_minutes": 20,
+            "reward_amount": 8,
+        },
+    )
+    assert alice_task_response.status_code == 200
+    alice_task_id = alice_task_response.json()["id"]
+    alice_complete_response = client.post(
+        f"/api/daily-tasks/{alice_task_id}/complete",
+        json={"actual_duration_minutes": 19},
+    )
+    assert alice_complete_response.status_code == 200
+
+    summary_response = client.get(
+        "/api/public/summary",
+        params={"date": "2026-06-20"},
+        headers={"Authorization": "Bearer readonly-test-token"},
+    )
+    assert summary_response.status_code == 200
+    assert summary_response.json() == {
+        "readOnly": True,
+        "current_balance": 1000,
+        "today_earned": 1000,
+    }
+
+    projects_response = client.get(
+        "/api/public/projects",
+        headers={"Authorization": "Bearer readonly-test-token"},
+    )
+    assert projects_response.status_code == 200
+    assert projects_response.json()["items"] == [
+        {
+            "id": bootstrap_project.id,
+            "name": "健身",
+            "status": "active",
+            "sort_order": 0,
+        }
+    ]
+
+    templates_response = client.get(
+        "/api/public/templates",
+        headers={"Authorization": "Bearer readonly-test-token"},
+    )
+    assert templates_response.status_code == 200
+    assert templates_response.json()["items"] == [
+        {
+            "id": bootstrap_template.id,
+            "project_id": bootstrap_template.project_id,
+            "name": "拉伸 15 分钟",
+            "default_estimated_duration_minutes": 15,
+            "default_reward_amount": 800,
+            "notes": "晨间拉伸",
+            "is_active": True,
+        }
+    ]
+
+    today_response = client.get(
+        "/api/public/today",
+        params={"date": "2026-06-20"},
+        headers={"Authorization": "Bearer readonly-test-token"},
+    )
+    assert today_response.status_code == 200
+    assert today_response.json()["tasks"] == [
+        {
+            "id": bootstrap_task.id,
+            "date": "2026-06-20",
+            "project_id": bootstrap_task.project_id,
+            "task_template_id": bootstrap_task.task_template_id,
+            "name_snapshot": "拉伸 15 分钟",
+            "estimated_duration_minutes_snapshot": 20,
+            "reward_amount_snapshot": 1000,
+            "status": "completed",
+            "actual_duration_minutes": 18,
+            "completed_at": bootstrap_task.completed_at.isoformat().replace("+00:00", "Z"),
+        }
+    ]
+
+    ledger_response = client.get(
+        "/api/public/ledger",
+        headers={"Authorization": "Bearer readonly-test-token"},
+    )
+    assert ledger_response.status_code == 200
+    assert [item["daily_task_id"] for item in ledger_response.json()["items"]] == [bootstrap_task.id]
