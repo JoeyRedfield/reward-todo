@@ -6,10 +6,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.models import AccessToken, SessionRecord, User
+from app.models import AccessToken, SessionRecord, TaskProject, TaskTemplate, User
+from app.schemas.auth import RegisterRequest
 from app.security import (
-    generate_session_token,
     generate_access_token,
+    generate_session_token,
     hash_access_token,
     hash_password,
     hash_session_token,
@@ -21,6 +22,32 @@ from app.security import (
 
 
 class AuthService:
+    DEFAULT_WORKSPACE_PROJECTS = [
+        (
+            "学习",
+            0,
+            [
+                ("背单词 20 分钟", 20, 8, ""),
+                ("深度阅读 30 分钟", 30, 12, ""),
+            ],
+        ),
+        (
+            "运动",
+            1,
+            [
+                ("力量训练 30 分钟", 30, 15, ""),
+                ("拉伸 15 分钟", 15, 6, ""),
+            ],
+        ),
+        (
+            "生活",
+            2,
+            [
+                ("整理房间 20 分钟", 20, 10, ""),
+            ],
+        ),
+    ]
+
     def __init__(self, session: Session) -> None:
         self.session = session
         self.settings = get_settings()
@@ -57,6 +84,59 @@ class AuthService:
         if not verify_password(password, user.password_hash):
             return None
         return user
+
+    def register_user(self, payload: RegisterRequest) -> tuple[User, str, SessionRecord]:
+        if not self.settings.auth_enable_registration:
+            raise ValueError("Registration is disabled")
+        if payload.password != payload.confirm_password:
+            raise ValueError("Passwords do not match")
+
+        normalized_username = normalize_username(payload.username)
+        normalized_email = payload.email.strip().lower()
+
+        if self._get_user_by_username(normalized_username) is not None:
+            raise ValueError("用户名已存在")
+        if self._get_user_by_email(normalized_email) is not None:
+            raise ValueError("邮箱已存在")
+
+        now = utc_now()
+        user = User(
+            username=normalized_username,
+            display_name=payload.display_name.strip(),
+            email=normalized_email,
+            password_hash=hash_password(payload.password),
+            password_changed_at=now,
+            last_login_at=now,
+        )
+        self.session.add(user)
+        try:
+            self.session.flush()
+            if payload.create_default_workspace:
+                self._create_default_workspace(user)
+
+            token = generate_session_token()
+            record = SessionRecord(
+                user_id=user.id,
+                session_token_hash=hash_session_token(token),
+                expires_at=session_expiry(self.settings.auth_session_days, now),
+                last_seen_at=now,
+            )
+            self.session.add(record)
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            if self._get_user_by_username(normalized_username) is not None:
+                raise ValueError("用户名已存在")
+            if self._get_user_by_email(normalized_email) is not None:
+                raise ValueError("邮箱已存在")
+            raise
+        except Exception:
+            self.session.rollback()
+            raise
+
+        self.session.refresh(user)
+        self.session.refresh(record)
+        return user, token, record
 
     def create_session(self, user: User) -> tuple[str, SessionRecord]:
         now = utc_now()
@@ -280,6 +360,31 @@ class AuthService:
 
     def _get_user_by_username(self, username: str) -> Optional[User]:
         return self.session.scalar(select(User).where(User.username == username))
+
+    def _get_user_by_email(self, email: str) -> Optional[User]:
+        return self.session.scalar(select(User).where(User.email == email))
+
+    def _create_default_workspace(self, user: User) -> None:
+        for project_name, sort_order, templates in self.DEFAULT_WORKSPACE_PROJECTS:
+            project = TaskProject(
+                user_id=user.id,
+                name=project_name,
+                status="active",
+                sort_order=sort_order,
+            )
+            self.session.add(project)
+            self.session.flush()
+            for template_name, duration_minutes, reward_amount, notes in templates:
+                self.session.add(
+                    TaskTemplate(
+                        project_id=project.id,
+                        name=template_name,
+                        default_estimated_duration_minutes=duration_minutes,
+                        default_reward_amount=reward_amount,
+                        notes=notes,
+                        is_active=True,
+                    )
+                )
 
     def _root_url(self) -> str:
         root_url = getattr(self.settings, "app_root_url", None)

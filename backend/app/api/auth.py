@@ -9,7 +9,7 @@ from app.dependencies import (
     require_authenticated_user,
 )
 from app.models import User
-from app.schemas.auth import AuthUserRead, ChangePasswordRequest, LoginRequest
+from app.schemas.auth import AuthUserRead, ChangePasswordRequest, LoginRequest, RegisterRequest
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -57,6 +57,24 @@ def login(
         )
 
     session_token, _ = service.create_session(user)
+    _set_session_cookie(response, settings=settings, session_token=session_token)
+    return user
+
+
+@router.post("/register", response_model=AuthUserRead)
+def register(
+    payload: RegisterRequest,
+    response: Response,
+    service: AuthService = Depends(get_auth_service),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        user, session_token, _ = service.register_user(payload)
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_403_FORBIDDEN if detail == "Registration is disabled" else 400
+        raise HTTPException(status_code=status_code, detail=detail)
+
     _set_session_cookie(response, settings=settings, session_token=session_token)
     return user
 

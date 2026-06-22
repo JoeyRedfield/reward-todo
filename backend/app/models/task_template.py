@@ -24,4 +24,5 @@ class TaskTemplate(Base):
     )
 
     project = relationship("TaskProject", back_populates="templates")
+    # Allows filtering by owner through project joins without duplicating user_id here.
     daily_tasks = relationship("DailyTask", back_populates="template", cascade="all, delete-orphan")

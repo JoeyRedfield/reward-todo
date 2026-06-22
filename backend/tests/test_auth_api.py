@@ -13,7 +13,7 @@ from sqlalchemy.exc import PendingRollbackError
 
 from app.config import get_settings
 from app.dependencies import get_auth_service
-from app.models import SessionRecord, User
+from app.models import SessionRecord, TaskProject, TaskTemplate, User
 from app.security import verify_password
 from app.services.auth_service import AuthService
 
@@ -250,6 +250,42 @@ def test_auth_migrations_include_profile_columns(tmp_path, monkeypatch):
         engine.dispose()
 
 
+def test_auth_migrations_include_task_reward_user_ownership_columns(tmp_path, monkeypatch):
+    database_path = tmp_path / "task_reward_user_ownership.db"
+    database_url = f"sqlite:///{database_path}"
+    backend_dir = Path(__file__).resolve().parents[1]
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTH_INITIAL_USERNAME", "reward")
+    monkeypatch.setenv("AUTH_INITIAL_PASSWORD", "secret-pass")
+    monkeypatch.setenv("TESTING", "true")
+    alembic_command, env = _build_alembic_subprocess(backend_dir)
+    env["DATABASE_URL"] = database_url
+    env["AUTH_INITIAL_USERNAME"] = "reward"
+    env["AUTH_INITIAL_PASSWORD"] = "secret-pass"
+    env["TESTING"] = "true"
+
+    subprocess.run(
+        [*alembic_command, "-c", "alembic.ini", "upgrade", "head"],
+        cwd=backend_dir,
+        env=env,
+        check=True,
+    )
+
+    engine = create_engine(database_url, future=True)
+    try:
+        inspector = inspect(engine)
+        task_project_columns = {column["name"] for column in inspector.get_columns("task_projects")}
+        daily_task_columns = {column["name"] for column in inspector.get_columns("daily_tasks")}
+        reward_ledger_columns = {column["name"] for column in inspector.get_columns("reward_ledger")}
+
+        assert "user_id" in task_project_columns
+        assert "user_id" in daily_task_columns
+        assert "user_id" in reward_ledger_columns
+    finally:
+        engine.dispose()
+
+
 def test_auth_migration_0003_downgrade_backfills_null_expiry(tmp_path, monkeypatch):
     database_path = tmp_path / "auth_access_tokens.db"
     database_url = f"sqlite:///{database_path}"
@@ -467,6 +503,174 @@ def test_login_sets_cookie_and_returns_user(client):
     assert morsel["httponly"]
     assert morsel["path"] == "/"
     assert morsel["samesite"].lower() == "lax"
+
+
+def test_register_succeeds_and_auto_logs_in(client, db_session):
+    cookie_name = get_settings().auth_session_cookie_name
+
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "new-user",
+            "display_name": "New User",
+            "email": "new-user@example.com",
+            "password": "new-secret1",
+            "confirm_password": "new-secret1",
+            "create_default_workspace": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["username"] == "new-user"
+    assert payload["display_name"] == "New User"
+    assert payload["email"] == "new-user@example.com"
+    user = db_session.scalar(select(User).where(User.username == "new-user"))
+    assert user is not None
+    assert verify_password("new-secret1", user.password_hash) is True
+
+    set_cookie = response.headers.get("set-cookie")
+    assert set_cookie is not None
+    cookie = SimpleCookie()
+    cookie.load(set_cookie)
+    assert cookie[cookie_name].value
+
+    me_response = client.get("/api/auth/me")
+    assert me_response.status_code == 200
+    assert me_response.json()["username"] == "new-user"
+
+
+def test_register_rejects_duplicate_username(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "reward",
+            "display_name": "Duplicate User",
+            "email": "other@example.com",
+            "password": "new-secret1",
+            "confirm_password": "new-secret1",
+            "create_default_workspace": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "用户名已存在"}
+
+
+def test_register_rejects_duplicate_email(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "different-user",
+            "display_name": "Duplicate Email",
+            "email": "reward@local.invalid",
+            "password": "new-secret1",
+            "confirm_password": "new-secret1",
+            "create_default_workspace": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "邮箱已存在"}
+
+
+def test_register_rejects_when_registration_disabled(client, monkeypatch):
+    monkeypatch.setenv("AUTH_ENABLE_REGISTRATION", "false")
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "blocked-user",
+            "display_name": "Blocked User",
+            "email": "blocked@example.com",
+            "password": "blocked123",
+            "confirm_password": "blocked123",
+            "create_default_workspace": False,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Registration is disabled"}
+
+
+def test_register_creates_default_workspace_only_for_new_user(client, db_session):
+    first_response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "alice",
+            "display_name": "Alice",
+            "email": "alice@example.com",
+            "password": "alice-pass1",
+            "confirm_password": "alice-pass1",
+            "create_default_workspace": True,
+        },
+    )
+    assert first_response.status_code == 200
+
+    first_user = db_session.scalar(select(User).where(User.username == "alice"))
+    assert first_user is not None
+    first_projects = db_session.scalars(
+        select(TaskProject)
+        .where(TaskProject.user_id == first_user.id)
+        .order_by(TaskProject.sort_order.asc(), TaskProject.id.asc())
+    ).all()
+    assert [(project.name, project.sort_order) for project in first_projects] == [
+        ("学习", 0),
+        ("运动", 1),
+        ("生活", 2),
+    ]
+
+    first_templates = db_session.scalars(
+        select(TaskTemplate)
+        .join(TaskProject, TaskTemplate.project_id == TaskProject.id)
+        .where(TaskProject.user_id == first_user.id)
+        .order_by(TaskProject.sort_order.asc(), TaskTemplate.id.asc())
+    ).all()
+    assert [(template.name, template.default_reward_amount) for template in first_templates] == [
+        ("背单词 20 分钟", 8),
+        ("深度阅读 30 分钟", 12),
+        ("力量训练 30 分钟", 15),
+        ("拉伸 15 分钟", 6),
+        ("整理房间 20 分钟", 10),
+    ]
+
+    second_response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "bob",
+            "display_name": "Bob",
+            "email": "bob@example.com",
+            "password": "bob-pass123",
+            "confirm_password": "bob-pass123",
+            "create_default_workspace": True,
+        },
+    )
+    assert second_response.status_code == 200
+
+    second_user = db_session.scalar(select(User).where(User.username == "bob"))
+    assert second_user is not None
+    second_projects = db_session.scalars(
+        select(TaskProject)
+        .where(TaskProject.user_id == second_user.id)
+        .order_by(TaskProject.sort_order.asc(), TaskProject.id.asc())
+    ).all()
+    assert [(project.name, project.sort_order) for project in second_projects] == [
+        ("学习", 0),
+        ("运动", 1),
+        ("生活", 2),
+    ]
+
+    assert {project.user_id for project in first_projects} == {first_user.id}
+    assert {project.user_id for project in second_projects} == {second_user.id}
+    assert db_session.scalar(
+        select(TaskProject)
+        .where(TaskProject.user_id == first_user.id, TaskProject.name == "学习")
+    ) is not None
+    assert db_session.scalar(
+        select(TaskProject)
+        .where(TaskProject.user_id == second_user.id, TaskProject.name == "学习")
+    ) is not None
 
 
 def test_task_projects_requires_login(client):

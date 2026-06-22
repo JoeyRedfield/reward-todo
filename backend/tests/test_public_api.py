@@ -1,12 +1,17 @@
 from datetime import date
+from pathlib import Path
 
+from sqlalchemy import select
+
+from app.models import User
 from app.services.task_reward_service import TaskRewardService
 
 
-def _seed_data(db_session):
+def _seed_data(db_session, user):
     service = TaskRewardService(db_session)
-    project = service.create_project(name="健身")
+    project = service.create_project(name="健身", user=user)
     template = service.create_task_template(
+        user=user,
         project_id=project.id,
         name="拉伸 15 分钟",
         default_estimated_duration_minutes=15,
@@ -15,12 +20,13 @@ def _seed_data(db_session):
         is_active=True,
     )
     task = service.create_daily_task(
+        user=user,
         task_template_id=template.id,
         date=date(2026, 6, 20),
         estimated_duration_minutes=20,
         reward_amount=1000,
     )
-    service.complete_daily_task(task.id, actual_duration_minutes=18)
+    service.complete_daily_task(user=user, task_id=task.id, actual_duration_minutes=18)
     return service, project, template, task
 
 
@@ -38,6 +44,15 @@ def test_public_health_remains_open(client) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_proxy_routes_mcp_requests_to_backend() -> None:
+    nginx_config = (
+        Path(__file__).resolve().parents[2] / "proxy" / "nginx.conf"
+    ).read_text(encoding="utf-8")
+
+    assert "location /mcp {" in nginx_config
+    assert "proxy_pass http://backend:8000;" in nginx_config
+
+
 def test_public_summary_rejects_invalid_token(client) -> None:
     response = client.get(
         "/api/public/summary",
@@ -49,7 +64,14 @@ def test_public_summary_rejects_invalid_token(client) -> None:
 
 
 def test_public_summary_returns_current_balance_and_today_earned(client, db_session) -> None:
-    _seed_data(db_session)
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _seed_data(db_session, user=user)
 
     response = client.get(
         "/api/public/summary",
@@ -66,7 +88,14 @@ def test_public_summary_returns_current_balance_and_today_earned(client, db_sess
 
 
 def test_public_today_returns_snapshot_based_task_payload(client, db_session) -> None:
-    _, _, _, task = _seed_data(db_session)
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _, _, _, task = _seed_data(db_session, user=user)
 
     response = client.get(
         "/api/public/today",
@@ -96,7 +125,14 @@ def test_public_today_returns_snapshot_based_task_payload(client, db_session) ->
 
 
 def test_public_ledger_returns_happy_path_payload(client, db_session) -> None:
-    _seed_data(db_session)
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _seed_data(db_session, user=user)
 
     response = client.get(
         "/api/public/ledger",
@@ -113,7 +149,14 @@ def test_public_ledger_returns_happy_path_payload(client, db_session) -> None:
 
 
 def test_public_projects_returns_happy_path_payload(client, db_session) -> None:
-    _, project, _, _ = _seed_data(db_session)
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _, project, _, _ = _seed_data(db_session, user=user)
 
     response = client.get(
         "/api/public/projects",
@@ -135,7 +178,14 @@ def test_public_projects_returns_happy_path_payload(client, db_session) -> None:
 
 
 def test_public_templates_returns_happy_path_payload(client, db_session) -> None:
-    _, _, template, _ = _seed_data(db_session)
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _, _, template, _ = _seed_data(db_session, user=user)
 
     response = client.get(
         "/api/public/templates",
@@ -180,3 +230,113 @@ def test_private_create_task_template_rejects_unknown_project_id(client) -> None
 
     assert response.status_code == 400
     assert response.json()["detail"] == "项目不存在"
+
+
+def test_task_reward_endpoints_isolate_projects_tasks_and_rewards_between_users(client) -> None:
+    first_register = client.post(
+        "/api/auth/register",
+        json={
+            "username": "alice",
+            "display_name": "Alice",
+            "email": "alice@example.com",
+            "password": "alice-pass1",
+            "confirm_password": "alice-pass1",
+            "create_default_workspace": True,
+        },
+    )
+    assert first_register.status_code == 200
+
+    alice_projects = client.get("/api/task-projects")
+    assert alice_projects.status_code == 200
+    alice_project_ids = [item["id"] for item in alice_projects.json()]
+    assert [item["name"] for item in alice_projects.json()] == ["学习", "运动", "生活"]
+
+    alice_templates = client.get("/api/task-templates", params={"project_id": alice_project_ids[0]})
+    assert alice_templates.status_code == 200
+    alice_template_id = alice_templates.json()[0]["id"]
+
+    alice_task_create = client.post(
+        "/api/daily-tasks",
+        json={
+            "task_template_id": alice_template_id,
+            "date": "2026-06-20",
+            "estimated_duration_minutes": 20,
+            "reward_amount": 8,
+        },
+    )
+    assert alice_task_create.status_code == 200
+    alice_task_id = alice_task_create.json()["id"]
+
+    alice_complete = client.post(
+        f"/api/daily-tasks/{alice_task_id}/complete",
+        json={"actual_duration_minutes": 18},
+    )
+    assert alice_complete.status_code == 200
+
+    alice_summary = client.get("/api/rewards/summary")
+    assert alice_summary.status_code == 200
+    assert alice_summary.json()["current_balance"] == 8
+
+    client.post("/api/auth/logout")
+
+    second_register = client.post(
+        "/api/auth/register",
+        json={
+            "username": "bob",
+            "display_name": "Bob",
+            "email": "bob@example.com",
+            "password": "bob-pass123",
+            "confirm_password": "bob-pass123",
+            "create_default_workspace": True,
+        },
+    )
+    assert second_register.status_code == 200
+
+    bob_projects = client.get("/api/task-projects")
+    assert bob_projects.status_code == 200
+    assert [item["name"] for item in bob_projects.json()] == ["学习", "运动", "生活"]
+    assert {item["id"] for item in bob_projects.json()}.isdisjoint(set(alice_project_ids))
+
+    bob_today = client.get("/api/daily-tasks", params={"date": "2026-06-20"})
+    assert bob_today.status_code == 200
+    assert bob_today.json() == []
+
+    bob_ledger = client.get("/api/rewards/ledger")
+    assert bob_ledger.status_code == 200
+    assert bob_ledger.json() == []
+
+    bob_summary = client.get("/api/rewards/summary")
+    assert bob_summary.status_code == 200
+    assert bob_summary.json()["current_balance"] == 0
+
+    alice_project_response = client.patch(
+        f"/api/task-projects/{alice_project_ids[0]}",
+        json={"name": "非法访问"},
+    )
+    assert alice_project_response.status_code == 404
+    assert alice_project_response.json() == {"detail": "项目不存在"}
+
+    client.post("/api/auth/logout")
+    relogin_alice = client.post(
+        "/api/auth/login",
+        json={"username": "alice", "password": "alice-pass1"},
+    )
+    assert relogin_alice.status_code == 200
+
+    alice_projects_again = client.get("/api/task-projects")
+    assert alice_projects_again.status_code == 200
+    assert [item["id"] for item in alice_projects_again.json()] == alice_project_ids
+
+    alice_today = client.get("/api/daily-tasks", params={"date": "2026-06-20"})
+    assert alice_today.status_code == 200
+    assert len(alice_today.json()) == 1
+    assert alice_today.json()[0]["id"] == alice_task_id
+
+    alice_ledger = client.get("/api/rewards/ledger")
+    assert alice_ledger.status_code == 200
+    assert len(alice_ledger.json()) == 1
+    assert alice_ledger.json()[0]["amount"] == 8
+
+    alice_summary_again = client.get("/api/rewards/summary")
+    assert alice_summary_again.status_code == 200
+    assert alice_summary_again.json()["current_balance"] == 8

@@ -11,6 +11,7 @@ class RewardLedger(Base):
     __tablename__ = "reward_ledger"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     entry_type: Mapped[str] = mapped_column(String(20))
     amount: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(Text, default="")
@@ -21,4 +22,5 @@ class RewardLedger(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    user = relationship("User")
     daily_task = relationship("DailyTask")
