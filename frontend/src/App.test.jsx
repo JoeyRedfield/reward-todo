@@ -37,6 +37,7 @@ const apiMocks = vi.hoisted(() => ({
   createProjectMock: vi.fn(),
   updateProjectMock: vi.fn(),
   createTaskTemplateMock: vi.fn(),
+  updateTaskTemplateMock: vi.fn(),
   createDailyTaskMock: vi.fn(),
   fetchRewardLedgerMock: vi.fn(),
   spendRewardMock: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock("./api/client", () => ({
   createProject: apiMocks.createProjectMock,
   updateProject: apiMocks.updateProjectMock,
   createTaskTemplate: apiMocks.createTaskTemplateMock,
+  updateTaskTemplate: apiMocks.updateTaskTemplateMock,
   createDailyTask: apiMocks.createDailyTaskMock,
   fetchRewardLedger: apiMocks.fetchRewardLedgerMock,
   spendReward: apiMocks.spendRewardMock,
@@ -150,6 +152,15 @@ beforeEach(() => {
     sort_order: 0,
   });
   apiMocks.createTaskTemplateMock.mockResolvedValue({ id: 2 });
+  apiMocks.updateTaskTemplateMock.mockResolvedValue({
+    id: 1,
+    project_id: 1,
+    name: "跑步 30 分钟",
+    default_estimated_duration_minutes: 30,
+    default_reward_amount: 2000,
+    notes: "",
+    is_active: true,
+  });
   apiMocks.createDailyTaskMock.mockResolvedValue({ id: 3 });
   apiMocks.fetchRewardLedgerMock.mockResolvedValue([]);
   apiMocks.spendRewardMock.mockResolvedValue({ id: 4 });
