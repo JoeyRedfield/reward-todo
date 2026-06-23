@@ -349,6 +349,73 @@ def test_private_create_task_template_rejects_unknown_project_id(client) -> None
     assert response.json()["detail"] == "项目不存在"
 
 
+def test_private_update_project_rejects_invalid_status(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    create_response = client.post(
+        "/api/task-projects",
+        json={"name": "健身"},
+    )
+    assert create_response.status_code == 200
+    project_id = create_response.json()["id"]
+
+    update_response = client.patch(
+        f"/api/task-projects/{project_id}",
+        json={"status": "paused"},
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "项目状态无效"
+
+
+def test_private_create_project_rejects_blank_name(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    response = client.post(
+        "/api/task-projects",
+        json={"name": "   "},
+    )
+
+    assert response.status_code == 422
+
+
+def test_private_create_task_template_rejects_blank_name(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    create_project_response = client.post(
+        "/api/task-projects",
+        json={"name": "健身"},
+    )
+    assert create_project_response.status_code == 200
+    project_id = create_project_response.json()["id"]
+
+    response = client.post(
+        "/api/task-templates",
+        json={
+            "project_id": project_id,
+            "name": "   ",
+            "default_estimated_duration_minutes": 30,
+            "default_reward_amount": 1000,
+            "notes": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_task_reward_endpoints_isolate_projects_tasks_and_rewards_between_users(client) -> None:
     first_register = client.post(
         "/api/auth/register",

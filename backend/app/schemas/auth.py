@@ -32,6 +32,13 @@ class RegisterRequest(BaseModel):
             raise ValueError("Invalid email address")
         return normalized
 
+    @field_validator("username", "display_name")
+    @classmethod
+    def validate_non_blank_text(cls, value: str) -> str:
+        if value.strip() == "":
+            raise ValueError("Value cannot be blank")
+        return value
+
 
 class AuthUserRead(BaseModel):
     id: int

@@ -54,6 +54,8 @@ class AuthService:
 
     def ensure_initial_user(self, username: str, password: str) -> User:
         normalized_username = normalize_username(username)
+        if not normalized_username:
+            raise ValueError("用户名不能为空")
         user = self._get_user_by_username(normalized_username)
         if user is not None:
             return user
@@ -93,6 +95,12 @@ class AuthService:
 
         normalized_username = normalize_username(payload.username)
         normalized_email = payload.email.strip().lower()
+        normalized_display_name = payload.display_name.strip()
+
+        if not normalized_username:
+            raise ValueError("用户名不能为空")
+        if normalized_display_name == "":
+            raise ValueError("显示名称不能为空")
 
         if self._get_user_by_username(normalized_username) is not None:
             raise ValueError("用户名已存在")
@@ -102,7 +110,7 @@ class AuthService:
         now = utc_now()
         user = User(
             username=normalized_username,
-            display_name=payload.display_name.strip(),
+            display_name=normalized_display_name,
             email=normalized_email,
             password_hash=hash_password(payload.password),
             password_changed_at=now,

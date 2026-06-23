@@ -227,3 +227,36 @@ def test_mcp_returns_invalid_params_for_non_integer_project_id(client) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["error"]["code"] == -32602
+
+
+def test_mcp_update_project_rejects_invalid_status(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-invalid-status",
+    )
+
+    create_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "create_project", "arguments": {"name": "健身"}},
+        request_id=11,
+    )
+    assert create_response.status_code == 200
+    project_id = create_response.json()["result"]["structuredContent"]["id"]
+
+    update_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "update_project",
+            "arguments": {"project_id": project_id, "status": "paused"},
+        },
+        request_id=12,
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["error"]["message"] == "项目状态无效"

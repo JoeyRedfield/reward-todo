@@ -827,6 +827,13 @@ def test_bootstrap_user_is_created_once(db_session, monkeypatch):
     assert verify_password("secret-pass", first_user.password_hash) is True
 
 
+def test_bootstrap_user_rejects_blank_username(db_session):
+    service = AuthService(db_session)
+
+    with pytest.raises(ValueError, match="用户名不能为空"):
+        service.ensure_initial_user("   ", "secret-pass")
+
+
 def test_create_and_revoke_session(db_session, monkeypatch):
     service = AuthService(db_session)
     user = service.ensure_initial_user("reward", "secret-pass")
@@ -1002,6 +1009,22 @@ def test_register_rejects_duplicate_email(client):
 
     assert response.status_code == 400
     assert response.json() == {"detail": "邮箱已存在"}
+
+
+def test_register_rejects_blank_username_and_display_name(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "username": "   ",
+            "display_name": "   ",
+            "email": "blank@example.com",
+            "password": "new-secret1",
+            "confirm_password": "new-secret1",
+            "create_default_workspace": False,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_register_rejects_when_registration_disabled(client, monkeypatch):

@@ -1,11 +1,18 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TaskProjectBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_not_blank(cls, value: str) -> str:
+        if value.strip() == "":
+            raise ValueError("Value cannot be blank")
+        return value
 
 
 class TaskProjectCreate(TaskProjectBase):
@@ -16,6 +23,13 @@ class TaskProjectUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     status: Optional[str] = None
     sort_order: Optional[int] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value.strip() == "":
+            raise ValueError("Value cannot be blank")
+        return value
 
 
 class TaskProjectRead(BaseModel):
@@ -35,6 +49,13 @@ class TaskTemplateCreate(BaseModel):
     notes: str = ""
     is_active: bool = True
 
+    @field_validator("name")
+    @classmethod
+    def validate_name_not_blank(cls, value: str) -> str:
+        if value.strip() == "":
+            raise ValueError("Value cannot be blank")
+        return value
+
 
 class TaskTemplateUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -42,6 +63,13 @@ class TaskTemplateUpdate(BaseModel):
     default_reward_amount: Optional[int] = Field(default=None, ge=0)
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_optional_name_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value.strip() == "":
+            raise ValueError("Value cannot be blank")
+        return value
 
 
 class TaskTemplateRead(BaseModel):

@@ -9,6 +9,8 @@ from app.schemas.task_reward import RewardSummaryRead
 
 
 class TaskRewardService:
+    ALLOWED_PROJECT_STATUSES = {"active", "archived"}
+
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -19,9 +21,11 @@ class TaskRewardService:
         status: str = "active",
         sort_order: int = 0,
     ) -> TaskProject:
+        normalized_name = self._normalize_required_name(name, "项目名称不能为空")
+        self._validate_project_status(status)
         project = TaskProject(
             user_id=user.id,
-            name=name,
+            name=normalized_name,
             status=status,
             sort_order=sort_order,
         )
@@ -44,6 +48,10 @@ class TaskRewardService:
     ) -> TaskProject:
         project = self._get_project(project_id, user=user)
         for key, value in changes.items():
+            if key == "status" and value is not None:
+                self._validate_project_status(value)
+            if key == "name" and value is not None:
+                value = self._normalize_required_name(value, "项目名称不能为空")
             if value is not None and hasattr(project, key):
                 setattr(project, key, value)
         self.session.commit()
@@ -61,10 +69,11 @@ class TaskRewardService:
         notes: str = "",
         is_active: bool = True,
     ) -> TaskTemplate:
+        normalized_name = self._normalize_required_name(name, "模板名称不能为空")
         self._get_project(project_id, user=user)
         template = TaskTemplate(
             project_id=project_id,
-            name=name,
+            name=normalized_name,
             default_estimated_duration_minutes=default_estimated_duration_minutes,
             default_reward_amount=default_reward_amount,
             notes=notes,
@@ -83,6 +92,8 @@ class TaskRewardService:
     ) -> TaskTemplate:
         template = self._get_template(template_id, user=user)
         for key, value in changes.items():
+            if key == "name" and value is not None:
+                value = self._normalize_required_name(value, "模板名称不能为空")
             if value is not None and hasattr(template, key):
                 setattr(template, key, value)
         self.session.commit()
@@ -313,6 +324,16 @@ class TaskRewardService:
         if project is None:
             raise ValueError("项目不存在")
         return project
+
+    def _validate_project_status(self, status: str) -> None:
+        if status not in self.ALLOWED_PROJECT_STATUSES:
+            raise ValueError("项目状态无效")
+
+    def _normalize_required_name(self, value: str, message: str) -> str:
+        normalized = value.strip()
+        if normalized == "":
+            raise ValueError(message)
+        return normalized
 
     def _get_daily_task(self, task_id: int, user: User) -> DailyTask:
         statement = select(DailyTask).where(

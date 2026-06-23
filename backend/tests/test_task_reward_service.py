@@ -223,6 +223,31 @@ def test_create_task_template_rejects_unknown_project_id(db_session) -> None:
         )
 
 
+def test_create_project_rejects_blank_name(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+
+    with pytest.raises(ValueError, match="项目名称不能为空"):
+        service.create_project(name="   ", user=user)
+
+
+def test_create_task_template_rejects_blank_name(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    project = service.create_project(name="健身", user=user)
+
+    with pytest.raises(ValueError, match="模板名称不能为空"):
+        service.create_task_template(
+            user=user,
+            project_id=project.id,
+            name="   ",
+            default_estimated_duration_minutes=30,
+            default_reward_amount=1000,
+            notes="",
+            is_active=True,
+        )
+
+
 def test_create_daily_task_rejects_duplicate_template_for_same_date(db_session) -> None:
     service = TaskRewardService(db_session)
     user = _create_user(db_session)
@@ -273,6 +298,33 @@ def test_update_project_can_archive_and_restore(db_session) -> None:
 
     assert archived.status == "archived"
     assert restored.status == "active"
+
+
+def test_update_project_rejects_invalid_status(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    project = service.create_project(name="健身", user=user)
+
+    with pytest.raises(ValueError, match="项目状态无效"):
+        service.update_project(project.id, user=user, status="paused")
+
+
+def test_update_project_rejects_blank_name(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    project = service.create_project(name="健身", user=user)
+
+    with pytest.raises(ValueError, match="项目名称不能为空"):
+        service.update_project(project.id, user=user, name="   ")
+
+
+def test_update_task_template_rejects_blank_name(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
+
+    with pytest.raises(ValueError, match="模板名称不能为空"):
+        service.update_task_template(template.id, user=user, name="   ")
 
 
 def test_reward_summary_returns_current_balance_and_today_earned(db_session) -> None:
