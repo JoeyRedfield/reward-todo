@@ -5,6 +5,7 @@ import {
   getErrorMessage,
   spendReward,
 } from "../api/client";
+import { parseYuanToFen } from "../utils/currency";
 
 const EMPTY_SUMMARY = {
   current_balance: 0,
@@ -43,9 +44,9 @@ export default function useRewardsBoard() {
   }, [loadBoard]);
 
   const submitSpend = useCallback(async () => {
-    const parsedAmount = Number(amountValue);
-    if (!Number.isInteger(parsedAmount) || parsedAmount <= 0) {
-      setSubmitError("扣减金额需要填写正整数。");
+    const amountInFen = parseYuanToFen(amountValue);
+    if (amountInFen === null || amountInFen <= 0) {
+      setSubmitError("扣减金额需要填写大于 0 的金额，最多保留两位小数。");
       return;
     }
     if (reasonValue.trim() === "") {
@@ -55,7 +56,7 @@ export default function useRewardsBoard() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await spendReward(parsedAmount * 100, reasonValue.trim());
+      await spendReward(amountInFen, reasonValue.trim());
       setAmountValue("");
       setReasonValue("");
       await loadBoard();

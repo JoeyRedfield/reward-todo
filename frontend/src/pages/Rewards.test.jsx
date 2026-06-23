@@ -53,8 +53,8 @@ test("renders reward ledger", async () => {
 test("submits reward spend form", async () => {
   render(<RewardsPage />);
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText("例如：5"), {
-    target: { value: "5" },
+  fireEvent.change(screen.getByPlaceholderText("例如：5.00"), {
+    target: { value: "4.50" },
   });
   fireEvent.change(screen.getByPlaceholderText("例如：咖啡"), {
     target: { value: "咖啡" },
@@ -62,6 +62,6 @@ test("submits reward spend form", async () => {
   fireEvent.click(screen.getByRole("button", { name: "确认扣减" }));
 
   await waitFor(() => {
-    expect(spendRewardMock).toHaveBeenCalledWith(500, "咖啡");
+    expect(spendRewardMock).toHaveBeenCalledWith(450, "咖啡");
   });
 });

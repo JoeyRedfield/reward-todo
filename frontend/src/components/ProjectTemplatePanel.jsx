@@ -1,8 +1,6 @@
 import { useState } from "react";
 
-function formatYuan(amount) {
-  return `¥${(amount / 100).toFixed(2)}`;
-}
+import { formatYuanFromFen, parseYuanToFen } from "../utils/currency";
 
 function confirmBeforeArchive(message) {
   if (typeof window?.confirm !== "function") {
@@ -74,8 +72,9 @@ export default function ProjectTemplatePanel({
       setTemplateFormError("默认时长需要填写正整数分钟。");
       return;
     }
-    if (trimmedReward !== "" && (!Number.isInteger(reward) || reward < 0)) {
-      setTemplateFormError("默认奖励金额需要填写非负整数。");
+    const rewardInFen = parseYuanToFen(trimmedReward);
+    if (trimmedReward !== "" && (rewardInFen === null || rewardInFen < 0)) {
+      setTemplateFormError("默认奖励金额需要填写非负金额，最多保留两位小数。");
       return;
     }
 
@@ -84,7 +83,7 @@ export default function ProjectTemplatePanel({
       await onCreateTemplate({
         name: trimmedName,
         defaultEstimatedDurationMinutes: duration,
-        defaultRewardAmount: reward,
+        defaultRewardAmount: rewardInFen,
       });
       setTemplateName("");
       setDurationValue("");
@@ -146,7 +145,7 @@ export default function ProjectTemplatePanel({
             <div className="task-name">{template.name}</div>
             <div className="task-meta">
               <span>{template.default_estimated_duration_minutes} 分钟</span>
-              <span>{formatYuan(template.default_reward_amount)}</span>
+              <span>{formatYuanFromFen(template.default_reward_amount)}</span>
             </div>
           </div>
           <span className="status-pill">
@@ -247,18 +246,19 @@ export default function ProjectTemplatePanel({
               />
             </label>
             <label>
-              <span>默认奖励金额（分）</span>
+              <span>默认奖励金额（元）</span>
               <input
                 type="number"
                 min="0"
+                step="0.01"
                 value={rewardValue}
                 onChange={(event) => setRewardValue(event.target.value)}
-                placeholder="1200"
+                placeholder="12.00"
                 disabled={selectedProjectId === null || submittingTemplate}
               />
             </label>
           </div>
-          <p className="empty-copy">留空时使用默认：20 分钟 / 1200 分</p>
+          <p className="empty-copy">留空时使用默认：20 分钟 / ¥12.00</p>
           {templateFormError ? <div className="error-banner">{templateFormError}</div> : null}
           <button className="primary-button" onClick={() => void handleTemplateSubmit()}>
             {submittingTemplate ? "创建中..." : "创建模板"}

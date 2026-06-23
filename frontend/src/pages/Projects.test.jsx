@@ -138,6 +138,33 @@ test("submits default duration and reward when template fields are blank", async
   });
 });
 
+test("submits template reward entered in yuan", async () => {
+  render(<ProjectsPage />);
+  expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByPlaceholderText("例如：力量训练 20 分钟"), {
+    target: { value: "复盘 20 分钟" },
+  });
+  fireEvent.change(screen.getByPlaceholderText("20"), {
+    target: { value: "25" },
+  });
+  fireEvent.change(screen.getByPlaceholderText("12.00"), {
+    target: { value: "12.34" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "创建模板" }));
+
+  await waitFor(() => {
+    expect(createTaskTemplateMock).toHaveBeenCalledWith({
+      project_id: 1,
+      name: "复盘 20 分钟",
+      default_estimated_duration_minutes: 25,
+      default_reward_amount: 1234,
+      notes: "",
+      is_active: true,
+    });
+  });
+});
+
 test("archives and restores projects via updateProject", async () => {
   fetchProjectsMock.mockResolvedValue([activeProject, nextActiveProject, archivedProject]);
   window.confirm = vi.fn(() => true);

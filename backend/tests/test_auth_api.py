@@ -1086,11 +1086,11 @@ def test_register_creates_default_workspace_only_for_new_user(client, db_session
         .order_by(TaskProject.sort_order.asc(), TaskTemplate.id.asc())
     ).all()
     assert [(template.name, template.default_reward_amount) for template in first_templates] == [
-        ("背单词 20 分钟", 8),
-        ("深度阅读 30 分钟", 12),
-        ("力量训练 30 分钟", 15),
-        ("拉伸 15 分钟", 6),
-        ("整理房间 20 分钟", 10),
+        ("背单词 20 分钟", 800),
+        ("深度阅读 30 分钟", 1200),
+        ("力量训练 30 分钟", 1500),
+        ("拉伸 15 分钟", 600),
+        ("整理房间 20 分钟", 1000),
     ]
 
     second_response = client.post(

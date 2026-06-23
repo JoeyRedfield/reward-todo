@@ -1,7 +1,8 @@
+import { formatYuanFromFen } from "../utils/currency";
+
 function formatYuan(amount) {
   const sign = amount >= 0 ? "" : "-";
-  const value = Math.abs(amount);
-  return `${sign}¥${(value / 100).toFixed(2)}`;
+  return `${sign}${formatYuanFromFen(Math.abs(amount))}`;
 }
 
 export default function RewardLedgerPanel({
@@ -38,10 +39,11 @@ export default function RewardLedgerPanel({
             <span>扣减金额（元）</span>
             <input
               type="number"
-              min="1"
+              min="0.01"
+              step="0.01"
               value={amountValue}
               onChange={(event) => onAmountChange(event.target.value)}
-              placeholder="例如：5"
+              placeholder="例如：5.00"
               disabled={submitting}
             />
           </label>

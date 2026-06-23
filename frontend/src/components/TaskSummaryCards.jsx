@@ -1,6 +1,4 @@
-function formatYuan(amount) {
-  return `¥${(amount / 100).toFixed(2)}`;
-}
+import { formatYuanFromFen } from "../utils/currency";
 
 export default function TaskSummaryCards({ summary, tasks }) {
   const completedCount = tasks.filter((task) => task.status === "completed").length;
@@ -14,14 +12,14 @@ export default function TaskSummaryCards({ summary, tasks }) {
       serial: "BALANCE",
       tone: "ledger",
       label: "当前奖励余额",
-      value: formatYuan(summary.current_balance),
+      value: formatYuanFromFen(summary.current_balance),
       hint: "可以用于手动扣减",
     },
     {
       serial: "EARNED",
       tone: "copper",
       label: "当日已赚",
-      value: formatYuan(summary.today_earned),
+      value: formatYuanFromFen(summary.today_earned),
       hint: "来自当前选中日期的已完成任务",
     },
     {

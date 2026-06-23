@@ -1,8 +1,5 @@
 import { useMemo, useState } from "react";
-
-function formatYuan(amount) {
-  return `¥${(amount / 100).toFixed(2)}`;
-}
+import { formatYuanFromFen } from "../utils/currency";
 
 function parsePositiveInteger(value) {
   const trimmed = value.trim();
@@ -82,7 +79,7 @@ export default function DailyTaskList({
                   <div className="task-name">{task.name_snapshot}</div>
                   <div className="task-meta">
                     <span>{task.estimated_duration_minutes_snapshot} 分钟</span>
-                    <span>{formatYuan(task.reward_amount_snapshot)}</span>
+                    <span>{formatYuanFromFen(task.reward_amount_snapshot)}</span>
                   </div>
                 </div>
                 {isCompleted ? (
