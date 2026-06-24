@@ -42,6 +42,7 @@ sh skills/reward-todo/scripts/rewardtools.sh [global-options] <command> [command
 - `templates-update`
 - `tasks-list`
 - `tasks-add`
+- `tasks-delete`
 - `tasks-complete`
 - `tasks-reopen`
 - `rewards-summary`

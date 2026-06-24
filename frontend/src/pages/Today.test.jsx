@@ -272,13 +272,47 @@ test("adds a standalone task with empty reward as zero and refreshes selected da
   });
 });
 
+test("shows standalone add pending state while request is in flight", async () => {
+  const createRequest = createDeferred();
+  createDailyTaskMock.mockReturnValue(createRequest.promise);
+  fetchDailyTasksMock.mockResolvedValue([]);
+  fetchRewardSummaryMock.mockResolvedValue({ current_balance: 0, today_earned: 0 });
+
+  render(<TodayPage />);
+  await screen.findByText("今天还没有安排任务。");
+
+  fireEvent.change(screen.getByLabelText("任务名称"), {
+    target: { value: "临时买菜" },
+  });
+  fireEvent.change(screen.getByLabelText("预计时长（分钟）"), {
+    target: { value: "20" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "直接添加任务" }));
+
+  await waitFor(() => {
+    expect(createDailyTaskMock).toHaveBeenCalledWith({
+      date: "2026-06-21",
+      name: "临时买菜",
+      estimated_duration_minutes: 20,
+      reward_amount: 0,
+    });
+    expect(screen.getByRole("button", { name: "添加中..." })).toBeDisabled();
+    expect(screen.getByLabelText("任务名称")).toBeDisabled();
+    expect(screen.getByLabelText("预计时长（分钟）")).toBeDisabled();
+    expect(screen.getByLabelText("奖励金额（元）")).toBeDisabled();
+  });
+
+  createRequest.resolve({ id: 9 });
+  await createRequest.promise;
+});
+
 test("marks standalone tasks and only shows delete buttons for standalone tasks", async () => {
   fetchDailyTasksMock.mockResolvedValue([task, standaloneTask, completedStandaloneTask]);
 
   render(<TodayPage />);
 
   expect(await screen.findAllByText("独立任务")).toHaveLength(2);
-  expect(screen.getAllByRole("button", { name: "删除任务" })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "删除" })).toHaveLength(2);
   expect(screen.getAllByRole("button", { name: "完成" })).toHaveLength(2);
   expect(screen.getByRole("button", { name: "撤销完成" })).toBeInTheDocument();
 });
@@ -293,13 +327,53 @@ test("deletes a standalone task and refreshes the board", async () => {
 
   render(<TodayPage />);
   await screen.findByText("临时买菜");
-  fireEvent.click(screen.getByRole("button", { name: "删除任务" }));
+  fireEvent.click(screen.getByRole("button", { name: "删除" }));
 
   await waitFor(() => {
-    expect(confirm).toHaveBeenCalledWith("删除这个独立任务？");
+    expect(confirm).toHaveBeenCalledWith("确认删除任务「临时买菜」吗？");
     expect(deleteDailyTaskMock).toHaveBeenCalledWith(4);
     expect(screen.getByText("今天还没有安排任务。")).toBeInTheDocument();
   });
+});
+
+test("uses completed standalone delete confirmation copy with reward warning", async () => {
+  fetchDailyTasksMock
+    .mockResolvedValueOnce([completedStandaloneTask])
+    .mockResolvedValueOnce([]);
+  fetchRewardSummaryMock
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 })
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 });
+
+  render(<TodayPage />);
+  await screen.findByText("临时买菜");
+  fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+  await waitFor(() => {
+    expect(confirm).toHaveBeenCalledWith(
+      "确认删除已完成任务「临时买菜」吗？删除后会扣回已发放奖励。"
+    );
+    expect(deleteDailyTaskMock).toHaveBeenCalledWith(5);
+  });
+});
+
+test("keeps reopen label unchanged while standalone deletion is pending", async () => {
+  const deleteRequest = createDeferred();
+  fetchDailyTasksMock.mockResolvedValue([completedStandaloneTask]);
+  deleteDailyTaskMock.mockReturnValue(deleteRequest.promise);
+
+  render(<TodayPage />);
+  await screen.findByText("临时买菜");
+  fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+  await waitFor(() => {
+    expect(deleteDailyTaskMock).toHaveBeenCalledWith(5);
+    expect(screen.getByRole("button", { name: "删除中..." })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "撤销完成" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤销中..." })).not.toBeInTheDocument();
+  });
+
+  deleteRequest.resolve(null);
+  await deleteRequest.promise;
 });
 
 test("completes a task and refreshes board", async () => {

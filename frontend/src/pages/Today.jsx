@@ -42,7 +42,9 @@ export default function TodayPage() {
           <div className="board-grid">
             <DailyTaskList
               emptyText={emptyText}
+              onDeleteTask={board.deleteStandaloneTask}
               pendingTaskId={board.pendingTaskId}
+              pendingTaskAction={board.pendingTaskAction}
               onFinishTask={board.finishTask}
               onReopenTask={board.reopenTask}
               tasks={board.tasks}
@@ -50,6 +52,8 @@ export default function TodayPage() {
             />
             <TaskQuickAddPanel
               addingTemplateId={board.addingTemplateId}
+              addingStandaloneTask={board.addingStandaloneTask}
+              onAddStandaloneTask={board.addStandaloneTask}
               onAddTemplate={board.addTemplateToSelectedDate}
               selectedDate={board.selectedDate}
               templates={board.quickAddTemplates}

@@ -19,32 +19,6 @@ const EMPTY_SUMMARY = {
   today_earned: 0,
 };
 
-let standaloneTaskActions = {
-  addStandaloneTask: async () => {},
-  deleteStandaloneTask: async () => {},
-  addingStandaloneTask: false,
-};
-
-const standaloneTaskListeners = new Set();
-
-function publishStandaloneTaskActions(nextActions) {
-  standaloneTaskActions = nextActions;
-  standaloneTaskListeners.forEach((listener) => listener(standaloneTaskActions));
-}
-
-export function getStandaloneTaskActions() {
-  return standaloneTaskActions;
-}
-
-export function subscribeStandaloneTaskActions(listener) {
-  standaloneTaskListeners.add(listener);
-  listener(standaloneTaskActions);
-
-  return () => {
-    standaloneTaskListeners.delete(listener);
-  };
-}
-
 function buildQuickAddTemplates(projects, templates) {
   const activeProjects = projects.filter((project) => project.status === "active");
   const activeProjectIds = new Set(activeProjects.map((project) => project.id));
@@ -69,6 +43,7 @@ export default function useTodayBoard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pendingTaskId, setPendingTaskId] = useState(null);
+  const [pendingTaskAction, setPendingTaskAction] = useState(null);
   const [addingTemplateId, setAddingTemplateId] = useState(null);
   const [addingStandaloneTask, setAddingStandaloneTask] = useState(false);
   const requestIdRef = useRef(0);
@@ -123,6 +98,7 @@ export default function useTodayBoard() {
 
   const finishTask = useCallback(async (taskId, actualDurationMinutes) => {
     setPendingTaskId(taskId);
+    setPendingTaskAction("complete");
     setError(null);
     try {
       await completeDailyTask(taskId, actualDurationMinutes);
@@ -132,11 +108,13 @@ export default function useTodayBoard() {
       throw finishError;
     } finally {
       setPendingTaskId(null);
+      setPendingTaskAction(null);
     }
   }, [loadBoard]);
 
   const reopenTask = useCallback(async (taskId) => {
     setPendingTaskId(taskId);
+    setPendingTaskAction("reopen");
     setError(null);
     try {
       await reopenDailyTask(taskId);
@@ -146,6 +124,7 @@ export default function useTodayBoard() {
       throw reopenError;
     } finally {
       setPendingTaskId(null);
+      setPendingTaskAction(null);
     }
   }, [loadBoard]);
 
@@ -189,6 +168,7 @@ export default function useTodayBoard() {
 
   const deleteStandaloneTask = useCallback(async (taskId) => {
     setPendingTaskId(taskId);
+    setPendingTaskAction("delete");
     setError(null);
     try {
       await deleteDailyTask(taskId);
@@ -198,6 +178,7 @@ export default function useTodayBoard() {
       throw deleteError;
     } finally {
       setPendingTaskId(null);
+      setPendingTaskAction(null);
     }
   }, [loadBoard]);
 
@@ -211,14 +192,6 @@ export default function useTodayBoard() {
     setVisibleMonth(today);
   }, [today]);
 
-  useEffect(() => {
-    publishStandaloneTaskActions({
-      addStandaloneTask,
-      deleteStandaloneTask,
-      addingStandaloneTask,
-    });
-  }, [addStandaloneTask, addingStandaloneTask, deleteStandaloneTask]);
-
   return {
     addingStandaloneTask,
     addingTemplateId,
@@ -231,6 +204,7 @@ export default function useTodayBoard() {
     jumpToToday,
     loading,
     pendingTaskId,
+    pendingTaskAction,
     quickAddTemplates,
     reopenTask,
     selectedDate,

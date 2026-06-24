@@ -1,8 +1,4 @@
-import { useEffect, useState } from "react";
-import {
-  getStandaloneTaskActions,
-  subscribeStandaloneTaskActions,
-} from "../hooks/useTodayBoard";
+import { useState } from "react";
 
 function formatYuan(amount) {
   return `¥${(amount / 100).toFixed(2)}`;
@@ -24,17 +20,16 @@ function parseRewardAmount(value) {
 
 export default function TaskQuickAddPanel({
   addingTemplateId,
+  addingStandaloneTask,
+  onAddStandaloneTask,
   selectedDate,
   templates,
   onAddTemplate,
 }) {
-  const [standaloneActions, setStandaloneActions] = useState(getStandaloneTaskActions);
   const [name, setName] = useState("");
   const [estimatedDuration, setEstimatedDuration] = useState("");
   const [rewardAmount, setRewardAmount] = useState("");
   const [submitError, setSubmitError] = useState(null);
-
-  useEffect(() => subscribeStandaloneTaskActions(setStandaloneActions), []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -63,7 +58,7 @@ export default function TaskQuickAddPanel({
     setSubmitError(null);
 
     try {
-      await standaloneActions.addStandaloneTask({
+      await onAddStandaloneTask({
         name: trimmedName,
         estimatedDurationMinutes: parsedDuration,
         rewardAmount: parsedReward,
@@ -88,7 +83,7 @@ export default function TaskQuickAddPanel({
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              disabled={standaloneActions.addingStandaloneTask}
+              disabled={addingStandaloneTask}
             />
           </label>
           <label>
@@ -98,7 +93,7 @@ export default function TaskQuickAddPanel({
               min="1"
               value={estimatedDuration}
               onChange={(event) => setEstimatedDuration(event.target.value)}
-              disabled={standaloneActions.addingStandaloneTask}
+              disabled={addingStandaloneTask}
             />
           </label>
           <label>
@@ -109,7 +104,7 @@ export default function TaskQuickAddPanel({
               placeholder="0.00"
               value={rewardAmount}
               onChange={(event) => setRewardAmount(event.target.value)}
-              disabled={standaloneActions.addingStandaloneTask}
+              disabled={addingStandaloneTask}
             />
           </label>
           <p className="helper-copy">留空按 ¥0.00 处理</p>
@@ -119,9 +114,9 @@ export default function TaskQuickAddPanel({
             <button
               className="primary-button"
               type="submit"
-              disabled={standaloneActions.addingStandaloneTask}
+              disabled={addingStandaloneTask}
             >
-              {standaloneActions.addingStandaloneTask ? "添加中..." : "直接添加任务"}
+              {addingStandaloneTask ? "添加中..." : "直接添加任务"}
             </button>
           </div>
         </div>
