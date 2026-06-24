@@ -88,6 +88,7 @@ function createDeferred() {
 const {
   completeDailyTaskMock,
   createDailyTaskMock,
+  deleteDailyTaskMock,
   fetchDailyTaskCalendarMock,
   fetchDailyTasksMock,
   fetchProjectsMock,
@@ -97,6 +98,7 @@ const {
 } = vi.hoisted(() => ({
   completeDailyTaskMock: vi.fn(),
   createDailyTaskMock: vi.fn(),
+  deleteDailyTaskMock: vi.fn(),
   fetchDailyTaskCalendarMock: vi.fn(),
   fetchDailyTasksMock: vi.fn(),
   fetchProjectsMock: vi.fn(),
@@ -118,6 +120,7 @@ vi.mock("../utils/date", async () => {
 vi.mock("../api/client", () => ({
   completeDailyTask: completeDailyTaskMock,
   createDailyTask: createDailyTaskMock,
+  deleteDailyTask: deleteDailyTaskMock,
   fetchDailyTaskCalendar: fetchDailyTaskCalendarMock,
   fetchDailyTasks: fetchDailyTasksMock,
   fetchProjects: fetchProjectsMock,
@@ -129,6 +132,7 @@ vi.mock("../api/client", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal("confirm", vi.fn(() => true));
 
   fetchDailyTasksMock.mockResolvedValue([task]);
   fetchDailyTaskCalendarMock.mockResolvedValue(calendarSummary);
@@ -139,9 +143,30 @@ beforeEach(() => {
   fetchProjectsMock.mockResolvedValue(projects);
   fetchTaskTemplatesMock.mockResolvedValue(templates);
   createDailyTaskMock.mockResolvedValue({ id: 3 });
+  deleteDailyTaskMock.mockResolvedValue(null);
   completeDailyTaskMock.mockResolvedValue(completedTask);
   reopenDailyTaskMock.mockResolvedValue(task);
 });
+
+const standaloneTask = {
+  id: 4,
+  date: "2026-06-22",
+  project_id: null,
+  task_template_id: null,
+  name_snapshot: "临时买菜",
+  estimated_duration_minutes_snapshot: 20,
+  reward_amount_snapshot: 0,
+  status: "pending",
+  actual_duration_minutes: null,
+  completed_at: null,
+};
+
+const completedStandaloneTask = {
+  ...standaloneTask,
+  id: 5,
+  status: "completed",
+  completed_at: "2026-06-22T11:00:00Z",
+};
 
 test("shows calendar markers and quick add options", async () => {
   render(<TodayPage />);
@@ -198,6 +223,82 @@ test("adds a template to the selected date and refreshes the board", async () =>
       reward_amount: 900,
     });
     expect(screen.getByText("晨间复盘 15 分钟")).toBeInTheDocument();
+  });
+});
+
+test("shows standalone add form even when no templates are available", async () => {
+  fetchTaskTemplatesMock.mockResolvedValue([]);
+
+  render(<TodayPage />);
+
+  expect(await screen.findByLabelText("任务名称")).toBeInTheDocument();
+  expect(screen.getByLabelText("预计时长（分钟）")).toBeInTheDocument();
+  expect(screen.getByLabelText("奖励金额（元）")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument();
+  expect(screen.getByText("留空按 ¥0.00 处理")).toBeInTheDocument();
+  expect(screen.getByText("当前没有可直接加入台账的启用模板。")).toBeInTheDocument();
+});
+
+test("adds a standalone task with empty reward as zero and refreshes selected date", async () => {
+  fetchDailyTasksMock
+    .mockResolvedValueOnce([task])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([standaloneTask]);
+  fetchRewardSummaryMock
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 })
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 })
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 });
+
+  render(<TodayPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "选择 2026-06-22" }));
+  await screen.findByText("2026-06-22 还没有安排任务。");
+
+  fireEvent.change(screen.getByLabelText("任务名称"), {
+    target: { value: "临时买菜" },
+  });
+  fireEvent.change(screen.getByLabelText("预计时长（分钟）"), {
+    target: { value: "20" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "直接添加任务" }));
+
+  await waitFor(() => {
+    expect(createDailyTaskMock).toHaveBeenCalledWith({
+      date: "2026-06-22",
+      name: "临时买菜",
+      estimated_duration_minutes: 20,
+      reward_amount: 0,
+    });
+    expect(screen.getByText("临时买菜")).toBeInTheDocument();
+  });
+});
+
+test("marks standalone tasks and only shows delete buttons for standalone tasks", async () => {
+  fetchDailyTasksMock.mockResolvedValue([task, standaloneTask, completedStandaloneTask]);
+
+  render(<TodayPage />);
+
+  expect(await screen.findAllByText("独立任务")).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "删除任务" })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "完成" })).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "撤销完成" })).toBeInTheDocument();
+});
+
+test("deletes a standalone task and refreshes the board", async () => {
+  fetchDailyTasksMock
+    .mockResolvedValueOnce([standaloneTask])
+    .mockResolvedValueOnce([]);
+  fetchRewardSummaryMock
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 })
+    .mockResolvedValueOnce({ current_balance: 0, today_earned: 0 });
+
+  render(<TodayPage />);
+  await screen.findByText("临时买菜");
+  fireEvent.click(screen.getByRole("button", { name: "删除任务" }));
+
+  await waitFor(() => {
+    expect(confirm).toHaveBeenCalledWith("删除这个独立任务？");
+    expect(deleteDailyTaskMock).toHaveBeenCalledWith(4);
+    expect(screen.getByText("今天还没有安排任务。")).toBeInTheDocument();
   });
 });
 

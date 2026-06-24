@@ -1,5 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatYuanFromFen } from "../utils/currency";
+import {
+  getStandaloneTaskActions,
+  subscribeStandaloneTaskActions,
+} from "../hooks/useTodayBoard";
 
 function parsePositiveInteger(value) {
   const trimmed = value.trim();
@@ -19,11 +23,14 @@ export default function DailyTaskList({
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [actualDurationValue, setActualDurationValue] = useState("");
   const [submitError, setSubmitError] = useState(null);
+  const [standaloneActions, setStandaloneActions] = useState(getStandaloneTaskActions);
 
   const expandedTask = useMemo(
     () => tasks.find((task) => task.id === expandedTaskId) || null,
     [expandedTaskId, tasks]
   );
+
+  useEffect(() => subscribeStandaloneTaskActions(setStandaloneActions), []);
 
   const resetConfirmation = () => {
     setExpandedTaskId(null);
@@ -47,6 +54,23 @@ export default function DailyTaskList({
     }
   };
 
+  const handleDelete = async (task) => {
+    const confirmed = window.confirm(
+      task.status === "completed"
+        ? "删除这个已完成的独立任务？删除后会扣回对应奖励。"
+        : "删除这个独立任务？"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await standaloneActions.deleteStandaloneTask(task.id);
+      if (expandedTaskId === task.id) {
+        resetConfirmation();
+      }
+    } catch {}
+  };
+
   if (tasks.length === 0) {
     return (
       <section className="panel">
@@ -68,6 +92,7 @@ export default function DailyTaskList({
           const isCompleted = task.status === "completed";
           const isExpanded = expandedTaskId === task.id;
           const isSubmitting = pendingTaskId === task.id;
+          const isStandaloneTask = task.task_template_id === null;
 
           return (
             <article
@@ -78,6 +103,7 @@ export default function DailyTaskList({
                 <div>
                   <div className="task-name">{task.name_snapshot}</div>
                   <div className="task-meta">
+                    {isStandaloneTask ? <span className="status-pill">独立任务</span> : null}
                     <span>{task.estimated_duration_minutes_snapshot} 分钟</span>
                     <span>{formatYuanFromFen(task.reward_amount_snapshot)}</span>
                   </div>
@@ -94,19 +120,45 @@ export default function DailyTaskList({
                     >
                       {isSubmitting ? "撤销中..." : "撤销完成"}
                     </button>
+                    {isStandaloneTask ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => {
+                          void handleDelete(task);
+                        }}
+                        disabled={pendingTaskId !== null}
+                        aria-label="删除任务"
+                      >
+                        {isSubmitting ? "删除中..." : "删除"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
-                  <button
-                    className="primary-button"
-                    onClick={() => {
-                      setExpandedTaskId(task.id);
-                      setActualDurationValue("");
-                      setSubmitError(null);
-                    }}
-                    disabled={pendingTaskId !== null}
-                  >
-                    完成
-                  </button>
+                  <div className="task-status-actions">
+                    <button
+                      className="primary-button"
+                      onClick={() => {
+                        setExpandedTaskId(task.id);
+                        setActualDurationValue("");
+                        setSubmitError(null);
+                      }}
+                      disabled={pendingTaskId !== null}
+                    >
+                      完成
+                    </button>
+                    {isStandaloneTask ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => {
+                          void handleDelete(task);
+                        }}
+                        disabled={pendingTaskId !== null}
+                        aria-label="删除任务"
+                      >
+                        {isSubmitting ? "删除中..." : "删除"}
+                      </button>
+                    ) : null}
+                  </div>
                 )}
               </div>
 

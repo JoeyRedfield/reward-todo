@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   completeDailyTask,
   createDailyTask,
+  deleteDailyTask,
   fetchDailyTaskCalendar,
   fetchDailyTasks,
   fetchProjects,
@@ -17,6 +18,32 @@ const EMPTY_SUMMARY = {
   current_balance: 0,
   today_earned: 0,
 };
+
+let standaloneTaskActions = {
+  addStandaloneTask: async () => {},
+  deleteStandaloneTask: async () => {},
+  addingStandaloneTask: false,
+};
+
+const standaloneTaskListeners = new Set();
+
+function publishStandaloneTaskActions(nextActions) {
+  standaloneTaskActions = nextActions;
+  standaloneTaskListeners.forEach((listener) => listener(standaloneTaskActions));
+}
+
+export function getStandaloneTaskActions() {
+  return standaloneTaskActions;
+}
+
+export function subscribeStandaloneTaskActions(listener) {
+  standaloneTaskListeners.add(listener);
+  listener(standaloneTaskActions);
+
+  return () => {
+    standaloneTaskListeners.delete(listener);
+  };
+}
 
 function buildQuickAddTemplates(projects, templates) {
   const activeProjects = projects.filter((project) => project.status === "active");
@@ -43,6 +70,7 @@ export default function useTodayBoard() {
   const [error, setError] = useState(null);
   const [pendingTaskId, setPendingTaskId] = useState(null);
   const [addingTemplateId, setAddingTemplateId] = useState(null);
+  const [addingStandaloneTask, setAddingStandaloneTask] = useState(false);
   const requestIdRef = useRef(0);
   const selectedDateRef = useRef(today);
   const visibleMonthRef = useRef(today);
@@ -140,6 +168,39 @@ export default function useTodayBoard() {
     }
   }, [loadBoard]);
 
+  const addStandaloneTask = useCallback(async ({ name, estimatedDurationMinutes, rewardAmount }) => {
+    setAddingStandaloneTask(true);
+    setError(null);
+    try {
+      await createDailyTask({
+        date: selectedDateRef.current,
+        name,
+        estimated_duration_minutes: estimatedDurationMinutes,
+        reward_amount: rewardAmount,
+      });
+      await loadBoard(selectedDateRef.current, visibleMonthRef.current);
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, "直接添加任务失败，请稍后重试。"));
+      throw submitError;
+    } finally {
+      setAddingStandaloneTask(false);
+    }
+  }, [loadBoard]);
+
+  const deleteStandaloneTask = useCallback(async (taskId) => {
+    setPendingTaskId(taskId);
+    setError(null);
+    try {
+      await deleteDailyTask(taskId);
+      await loadBoard(selectedDateRef.current, visibleMonthRef.current);
+    } catch (deleteError) {
+      setError(getErrorMessage(deleteError, "删除任务失败，请稍后重试。"));
+      throw deleteError;
+    } finally {
+      setPendingTaskId(null);
+    }
+  }, [loadBoard]);
+
   const selectDate = useCallback((date) => {
     setSelectedDate(date);
     setVisibleMonth(date);
@@ -150,10 +211,21 @@ export default function useTodayBoard() {
     setVisibleMonth(today);
   }, [today]);
 
+  useEffect(() => {
+    publishStandaloneTaskActions({
+      addStandaloneTask,
+      deleteStandaloneTask,
+      addingStandaloneTask,
+    });
+  }, [addStandaloneTask, addingStandaloneTask, deleteStandaloneTask]);
+
   return {
+    addingStandaloneTask,
     addingTemplateId,
     addTemplateToSelectedDate,
+    addStandaloneTask,
     calendarSummary,
+    deleteStandaloneTask,
     error,
     finishTask,
     jumpToToday,
