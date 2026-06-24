@@ -3,7 +3,7 @@
 个人任务板 + 奖励账本的独立仓库骨架。
 
 日常开发前，先看 [`docs/development-workflow.md`](/Users/wuzhuoyi/Desktop/code/reward-todo/docs/development-workflow.md)。
-这份文档约束 `main` 只用于同步远端，日常改动放到 feature branch / worktree，避免主工作区再次分叉或积累脏状态。
+这是一份面向单人开发的最小 Git 约定：`main` 只做同步，日常改动放到 feature branch，`worktree` 只在确实需要时再用。
 
 ## Quick Start
 
