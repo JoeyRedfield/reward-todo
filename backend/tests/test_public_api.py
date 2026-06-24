@@ -281,6 +281,19 @@ def test_delete_daily_task_rejects_template_based_task(client, db_session) -> No
     assert response.json()["detail"] == "只有独立任务支持删除"
 
 
+def test_delete_daily_task_returns_404_when_task_missing(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    response = client.delete("/api/daily-tasks/999999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "日任务不存在"
+
+
 def test_public_today_returns_snapshot_based_task_payload(client, db_session) -> None:
     login_response = client.post(
         "/api/auth/login",

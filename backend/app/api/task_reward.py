@@ -161,6 +161,8 @@ def delete_daily_task(
     try:
         service.delete_daily_task(task_id, user=user)
     except ValueError as exc:
+        if str(exc) == "日任务不存在":
+            raise HTTPException(status_code=404, detail=str(exc))
         _raise_http_error(exc)
     return Response(status_code=204)
 
