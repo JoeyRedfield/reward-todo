@@ -204,6 +204,83 @@ def test_private_daily_task_calendar_returns_marked_dates(client, db_session) ->
     ]
 
 
+def test_create_daily_task_allows_standalone_task(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    response = client.post(
+        "/api/daily-tasks",
+        json={
+            "name": "独立任务",
+            "date": "2026-06-20",
+            "estimated_duration_minutes": 35,
+            "reward_amount": 1200,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": response.json()["id"],
+        "date": "2026-06-20",
+        "project_id": None,
+        "task_template_id": None,
+        "name_snapshot": "独立任务",
+        "estimated_duration_minutes_snapshot": 35,
+        "reward_amount_snapshot": 1200,
+        "status": "pending",
+        "actual_duration_minutes": None,
+        "completed_at": None,
+    }
+
+
+def test_delete_daily_task_deletes_standalone_task(client) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+
+    create_response = client.post(
+        "/api/daily-tasks",
+        json={
+            "name": "可删除任务",
+            "date": "2026-06-20",
+            "estimated_duration_minutes": 20,
+            "reward_amount": 500,
+        },
+    )
+    assert create_response.status_code == 200
+    task_id = create_response.json()["id"]
+
+    delete_response = client.delete(f"/api/daily-tasks/{task_id}")
+
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
+
+    list_response = client.get("/api/daily-tasks", params={"date": "2026-06-20"})
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+
+def test_delete_daily_task_rejects_template_based_task(client, db_session) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "reward", "password": "super-secret"},
+    )
+    assert login_response.status_code == 200
+    user = db_session.scalar(select(User).where(User.username == "reward"))
+    assert user is not None
+    _, _, _, task = _seed_data(db_session, user=user)
+
+    response = client.delete(f"/api/daily-tasks/{task.id}")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "只有独立任务支持删除"
+
+
 def test_public_today_returns_snapshot_based_task_payload(client, db_session) -> None:
     login_response = client.post(
         "/api/auth/login",

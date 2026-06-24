@@ -1,7 +1,7 @@
 import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.dependencies import get_task_reward_service, require_authenticated_user
 from app.models import User
@@ -149,6 +149,20 @@ def create_daily_task(
         return service.create_daily_task(user=user, **payload.model_dump())
     except ValueError as exc:
         _raise_http_error(exc)
+
+
+@router.delete("/daily-tasks/{task_id}", status_code=204)
+def delete_daily_task(
+    task_id: int,
+    authenticated: tuple[User, str] = Depends(require_authenticated_user),
+    service: TaskRewardService = Depends(get_task_reward_service),
+) -> Response:
+    user, _ = authenticated
+    try:
+        service.delete_daily_task(task_id, user=user)
+    except ValueError as exc:
+        _raise_http_error(exc)
+    return Response(status_code=204)
 
 
 @router.post("/daily-tasks/{task_id}/complete", response_model=DailyTaskRead)
