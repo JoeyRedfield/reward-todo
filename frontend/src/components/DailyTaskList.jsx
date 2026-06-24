@@ -11,7 +11,9 @@ function parsePositiveInteger(value) {
 export default function DailyTaskList({
   emptyText = "今天还没有安排任务。",
   tasks,
+  onDeleteTask,
   pendingTaskId,
+  pendingTaskAction,
   onFinishTask,
   onReopenTask,
   title = "当日任务",
@@ -47,6 +49,23 @@ export default function DailyTaskList({
     }
   };
 
+  const handleDelete = async (task) => {
+    const confirmed = window.confirm(
+      task.status === "completed"
+        ? `确认删除已完成任务「${task.name_snapshot}」吗？删除后会扣回已发放奖励。`
+        : `确认删除任务「${task.name_snapshot}」吗？`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await onDeleteTask(task.id);
+      if (expandedTaskId === task.id) {
+        resetConfirmation();
+      }
+    } catch {}
+  };
+
   if (tasks.length === 0) {
     return (
       <section className="panel">
@@ -67,7 +86,11 @@ export default function DailyTaskList({
         {tasks.map((task) => {
           const isCompleted = task.status === "completed";
           const isExpanded = expandedTaskId === task.id;
-          const isSubmitting = pendingTaskId === task.id;
+          const isPendingTask = pendingTaskId === task.id;
+          const isStandaloneTask = task.task_template_id === null;
+          const isCompleting = isPendingTask && pendingTaskAction === "complete";
+          const isReopening = isPendingTask && pendingTaskAction === "reopen";
+          const isDeleting = isPendingTask && pendingTaskAction === "delete";
 
           return (
             <article
@@ -78,6 +101,7 @@ export default function DailyTaskList({
                 <div>
                   <div className="task-name">{task.name_snapshot}</div>
                   <div className="task-meta">
+                    {isStandaloneTask ? <span className="status-pill">独立任务</span> : null}
                     <span>{task.estimated_duration_minutes_snapshot} 分钟</span>
                     <span>{formatYuanFromFen(task.reward_amount_snapshot)}</span>
                   </div>
@@ -92,21 +116,45 @@ export default function DailyTaskList({
                       }}
                       disabled={pendingTaskId !== null}
                     >
-                      {isSubmitting ? "撤销中..." : "撤销完成"}
+                      {isReopening ? "撤销中..." : "撤销完成"}
                     </button>
+                    {isStandaloneTask ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => {
+                          void handleDelete(task);
+                        }}
+                        disabled={pendingTaskId !== null}
+                      >
+                        {isDeleting ? "删除中..." : "删除"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
-                  <button
-                    className="primary-button"
-                    onClick={() => {
-                      setExpandedTaskId(task.id);
-                      setActualDurationValue("");
-                      setSubmitError(null);
-                    }}
-                    disabled={pendingTaskId !== null}
-                  >
-                    完成
-                  </button>
+                  <div className="task-status-actions">
+                    <button
+                      className="primary-button"
+                      onClick={() => {
+                        setExpandedTaskId(task.id);
+                        setActualDurationValue("");
+                        setSubmitError(null);
+                      }}
+                      disabled={pendingTaskId !== null}
+                    >
+                      完成
+                    </button>
+                    {isStandaloneTask ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => {
+                          void handleDelete(task);
+                        }}
+                        disabled={pendingTaskId !== null}
+                      >
+                        {isDeleting ? "删除中..." : "删除"}
+                      </button>
+                    ) : null}
+                  </div>
                 )}
               </div>
 
@@ -126,7 +174,7 @@ export default function DailyTaskList({
                       value={actualDurationValue}
                       onChange={(event) => setActualDurationValue(event.target.value)}
                       placeholder="选填，单位分钟"
-                      disabled={isSubmitting}
+                      disabled={isCompleting}
                     />
                   </label>
                   <p className="helper-copy">
@@ -140,9 +188,9 @@ export default function DailyTaskList({
                     <button
                       className="primary-button"
                       onClick={() => void handleConfirm()}
-                      disabled={isSubmitting}
+                      disabled={isCompleting}
                     >
-                      {isSubmitting ? "提交中..." : "确认完成"}
+                      {isCompleting ? "提交中..." : "确认完成"}
                     </button>
                   </div>
                 </div>

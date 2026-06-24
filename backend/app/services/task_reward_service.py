@@ -1,5 +1,6 @@
 import datetime
 from typing import Optional
+
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from app.schemas.task_reward import RewardSummaryRead
 
 class TaskRewardService:
     ALLOWED_PROJECT_STATUSES = {"active", "archived"}
+    DAILY_TASK_NAME_MAX_LENGTH = 200
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -118,22 +120,39 @@ class TaskRewardService:
 
     def create_daily_task(
         self,
-        task_template_id: int,
         date: datetime.date,
         estimated_duration_minutes: int,
         reward_amount: int,
         user: User,
+        task_template_id: Optional[int] = None,
+        name: Optional[str] = None,
     ) -> DailyTask:
-        template = self._get_template(task_template_id, user=user)
-        if not template.is_active:
-            raise ValueError("模板已停用")
+        normalized_name = self._normalize_daily_task_create_inputs(
+            task_template_id=task_template_id,
+            name=name,
+        )
+
+        template: Optional[TaskTemplate] = None
+        project_id: Optional[int] = None
+        name_snapshot: str
+        template_id: Optional[int] = None
+
+        if task_template_id is not None:
+            template = self._get_template(task_template_id, user=user)
+            if not template.is_active:
+                raise ValueError("模板已停用")
+            project_id = template.project_id
+            template_id = template.id
+            name_snapshot = template.name
+        else:
+            name_snapshot = normalized_name or ""
 
         task = DailyTask(
             date=date,
             user_id=user.id,
-            project_id=template.project_id,
-            task_template_id=template.id,
-            name_snapshot=template.name,
+            project_id=project_id,
+            task_template_id=template_id,
+            name_snapshot=name_snapshot,
             estimated_duration_minutes_snapshot=estimated_duration_minutes,
             reward_amount_snapshot=reward_amount,
             status="pending",
@@ -146,6 +165,42 @@ class TaskRewardService:
             raise ValueError("当日任务已存在")
         self.session.refresh(task)
         return task
+
+    def delete_daily_task(self, task_id: int, user: User) -> None:
+        task = self._get_daily_task(task_id, user=user)
+        if task.task_template_id is not None:
+            raise ValueError("只有独立任务支持删除")
+
+        task_balance = int(
+            self.session.scalar(
+                select(func.coalesce(func.sum(RewardLedger.amount), 0)).where(
+                    RewardLedger.daily_task_id == task.id,
+                    RewardLedger.user_id == user.id,
+                )
+            )
+            or 0
+        )
+
+        if task_balance > 0:
+            self.session.add(
+                RewardLedger(
+                    user_id=user.id,
+                    entry_type="adjust",
+                    amount=-task_balance,
+                    reason=f"delete:{task.name_snapshot}",
+                    daily_task_id=None,
+                )
+            )
+
+        self.session.query(RewardLedger).filter(
+            RewardLedger.daily_task_id == task.id,
+            RewardLedger.user_id == user.id,
+        ).update(
+            {RewardLedger.daily_task_id: None},
+            synchronize_session=False,
+        )
+        self.session.delete(task)
+        self.session.commit()
 
     def list_daily_tasks(self, date: datetime.date, user: User) -> list[DailyTask]:
         statement = select(DailyTask).where(
@@ -334,6 +389,25 @@ class TaskRewardService:
         if normalized == "":
             raise ValueError(message)
         return normalized
+
+    def _normalize_daily_task_create_inputs(
+        self,
+        task_template_id: Optional[int],
+        name: Optional[str],
+    ) -> Optional[str]:
+        if name is not None:
+            normalized_name = name.strip()
+            if normalized_name == "":
+                raise ValueError("日任务创建参数无效")
+            if len(normalized_name) > self.DAILY_TASK_NAME_MAX_LENGTH:
+                raise ValueError("日任务创建参数无效")
+        else:
+            normalized_name = None
+        has_template = task_template_id is not None
+        has_name = normalized_name is not None and normalized_name != ""
+        if has_template == has_name:
+            raise ValueError("日任务创建参数无效")
+        return normalized_name
 
     def _get_daily_task(self, task_id: int, user: User) -> DailyTask:
         statement = select(DailyTask).where(

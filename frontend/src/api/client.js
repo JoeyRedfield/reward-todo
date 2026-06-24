@@ -219,4 +219,10 @@ export async function createDailyTask(payload) {
   });
 }
 
+export async function deleteDailyTask(taskId) {
+  return request(`/daily-tasks/${taskId}`, {
+    method: "DELETE",
+  });
+}
+
 export { getErrorMessage };
