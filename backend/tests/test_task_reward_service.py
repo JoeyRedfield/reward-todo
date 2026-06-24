@@ -482,3 +482,84 @@ def test_delete_daily_task_rejects_template_derived_task(db_session) -> None:
 
     with pytest.raises(ValueError, match="只有独立任务支持删除"):
         service.delete_daily_task(task.id, user=user)
+
+
+def test_create_daily_task_rejects_template_with_blank_name_input(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    _, template = _create_project_and_template(service, user)
+
+    with pytest.raises(ValueError, match="日任务创建参数无效"):
+        service.create_daily_task(
+            user=user,
+            task_template_id=template.id,
+            name="   ",
+            date=date(2026, 6, 20),
+            estimated_duration_minutes=30,
+            reward_amount=2000,
+        )
+
+
+def test_delete_pending_direct_daily_task_removes_it_without_adjustment(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    task = service.create_daily_task(
+        user=user,
+        task_template_id=None,
+        name="拉伸",
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=15,
+        reward_amount=200,
+    )
+
+    service.delete_daily_task(task.id, user=user)
+
+    assert service.list_daily_tasks(date(2026, 6, 20), user=user) == []
+    assert service.list_reward_ledger(20, user=user) == []
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 20))
+    assert summary.current_balance == 0
+    assert summary.today_earned == 0
+
+
+def test_delete_direct_daily_task_after_reopen_does_not_add_delete_adjustment(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    task = service.create_daily_task(
+        user=user,
+        task_template_id=None,
+        name="复盘",
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=40,
+        reward_amount=1200,
+    )
+    service.complete_daily_task(task.id, user=user, actual_duration_minutes=42)
+    service.reopen_daily_task(task.id, user=user)
+
+    service.delete_daily_task(task.id, user=user)
+
+    ledger = service.list_reward_ledger(20, user=user)
+    summary = service.get_reward_summary(user=user, date=date(2026, 6, 20))
+
+    assert service.list_daily_tasks(date(2026, 6, 20), user=user) == []
+    assert summary.current_balance == 0
+    assert summary.today_earned == 0
+    assert [(entry.entry_type, entry.amount, entry.reason, entry.daily_task_id) for entry in ledger] == [
+        ("adjust", -1200, "reopen:复盘", None),
+        ("earn", 1200, "复盘", None),
+    ]
+
+
+def test_create_direct_daily_task_rejects_name_longer_than_200_chars(db_session) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    long_name = "专注" * 101
+
+    with pytest.raises(ValueError, match="日任务创建参数无效"):
+        service.create_daily_task(
+            user=user,
+            task_template_id=None,
+            name=long_name,
+            date=date(2026, 6, 20),
+            estimated_duration_minutes=60,
+            reward_amount=1000,
+        )

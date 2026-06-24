@@ -11,6 +11,7 @@ from app.schemas.task_reward import RewardSummaryRead
 
 class TaskRewardService:
     ALLOWED_PROJECT_STATUSES = {"active", "archived"}
+    DAILY_TASK_NAME_MAX_LENGTH = 200
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -394,7 +395,14 @@ class TaskRewardService:
         task_template_id: Optional[int],
         name: Optional[str],
     ) -> Optional[str]:
-        normalized_name = name.strip() if name is not None else None
+        if name is not None:
+            normalized_name = name.strip()
+            if normalized_name == "":
+                raise ValueError("日任务创建参数无效")
+            if len(normalized_name) > self.DAILY_TASK_NAME_MAX_LENGTH:
+                raise ValueError("日任务创建参数无效")
+        else:
+            normalized_name = None
         has_template = task_template_id is not None
         has_name = normalized_name is not None and normalized_name != ""
         if has_template == has_name:
