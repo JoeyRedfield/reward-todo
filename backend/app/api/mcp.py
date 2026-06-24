@@ -350,6 +350,16 @@ async def handle_mcp(
                                 "estimated_duration_minutes",
                                 "reward_amount",
                             ],
+                            "oneOf": [
+                                {
+                                    "required": ["task_template_id"],
+                                    "not": {"required": ["name"]},
+                                },
+                                {
+                                    "required": ["name"],
+                                    "not": {"required": ["task_template_id"]},
+                                },
+                            ],
                         },
                         {
                             "type": "object",

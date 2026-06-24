@@ -249,6 +249,17 @@ def parse_value(param, value):
     return value
 
 
+def validate_tasks_add_mode(body_values):
+    has_template = body_values.get("task_template_id") is not None
+    name_value = body_values.get("name")
+    has_name = isinstance(name_value, str) and name_value.strip() != ""
+
+    if not has_template and not has_name:
+        raise SystemExit("tasks-add requires one of: --template-id or --name")
+    if has_template and has_name:
+        raise SystemExit("tasks-add does not allow --template-id and --name together")
+
+
 def parse_command_args(config, argv):
     path_values = {}
     query_values = {}
@@ -291,16 +302,36 @@ def parse_command_args(config, argv):
                 raise SystemExit(f"Missing required option: {param['flag']}")
 
     if config["path"] == "/daily-tasks" and config["method"] == "POST":
-        has_template = body_values.get("task_template_id") is not None
-        name_value = body_values.get("name")
-        has_name = isinstance(name_value, str) and name_value.strip() != ""
-        if has_template == has_name:
-            raise SystemExit("tasks-add requires either --template-id or --name")
+        validate_tasks_add_mode(body_values)
 
     if "is_active" not in body_values and any(param["api_name"] == "is_active" for param in config["params"]):
         body_values["is_active"] = True
 
     return path_values, query_values, body_values
+
+
+def _selfcheck():
+    validate_tasks_add_mode({"task_template_id": 1})
+    validate_tasks_add_mode({"name": "独立任务"})
+
+    for payload, expected_message in [
+        ({}, "tasks-add requires one of: --template-id or --name"),
+        (
+            {"task_template_id": 1, "name": "独立任务"},
+            "tasks-add does not allow --template-id and --name together",
+        ),
+    ]:
+        try:
+            validate_tasks_add_mode(payload)
+        except SystemExit as exc:
+            if str(exc) != expected_message:
+                raise SystemExit(
+                    f"selfcheck failed: expected {expected_message!r}, got {str(exc)!r}"
+                ) from exc
+        else:
+            raise SystemExit(f"selfcheck failed: expected SystemExit for {payload!r}")
+
+    print("selfcheck ok")
 
 
 def make_request(base_url: str, token: str, config, path_values, query_values, body_values):
@@ -344,6 +375,10 @@ def main():
     load_env_file()
     argv = sys.argv[1:]
     raw_response = False
+
+    if argv and argv[0] == "--selfcheck":
+        _selfcheck()
+        return
 
     while argv and argv[0].startswith("--"):
         option = argv.pop(0)
