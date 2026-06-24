@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TaskProjectBase(BaseModel):
@@ -86,9 +86,28 @@ class TaskTemplateRead(BaseModel):
 
 class DailyTaskCreate(BaseModel):
     date: date
-    task_template_id: int
+    task_template_id: Optional[int] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     estimated_duration_minutes: int = Field(ge=1, le=1440)
     reward_amount: int = Field(ge=0)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value.strip() == "":
+            raise ValueError("日任务创建参数无效")
+        return value
+
+    @model_validator(mode="after")
+    def validate_create_mode(self) -> "DailyTaskCreate":
+        has_template = self.task_template_id is not None
+        normalized_name = self.name.strip() if self.name is not None else None
+        has_name = normalized_name is not None and normalized_name != ""
+        if has_template == has_name:
+            raise ValueError("日任务创建参数无效")
+        if has_name:
+            self.name = normalized_name
+        return self
 
 
 class DailyTaskUpdate(BaseModel):
@@ -104,8 +123,8 @@ class CompleteDailyTaskRequest(BaseModel):
 class DailyTaskRead(BaseModel):
     id: int
     date: date
-    project_id: int
-    task_template_id: int
+    project_id: Optional[int]
+    task_template_id: Optional[int]
     name_snapshot: str
     estimated_duration_minutes_snapshot: int
     reward_amount_snapshot: int
