@@ -107,12 +107,13 @@ COMMANDS = {
         ],
     },
     "tasks-add": {
-        "description": "Create a daily task from a template.",
+        "description": "Create a daily task from a template or as a standalone task.",
         "method": "POST",
         "path": "/daily-tasks",
         "params": [
             {"flag": "--date", "api_name": "date", "kind": "body", "required": True},
-            {"flag": "--template-id", "api_name": "task_template_id", "kind": "body", "type": "int", "required": True},
+            {"flag": "--template-id", "api_name": "task_template_id", "kind": "body", "type": "int"},
+            {"flag": "--name", "api_name": "name", "kind": "body"},
             {
                 "flag": "--duration",
                 "api_name": "estimated_duration_minutes",
@@ -121,6 +122,14 @@ COMMANDS = {
                 "required": True,
             },
             {"flag": "--reward", "api_name": "reward_amount", "kind": "body", "type": "int", "required": True},
+        ],
+    },
+    "tasks-delete": {
+        "description": "Delete a standalone daily task.",
+        "method": "DELETE",
+        "path": "/daily-tasks/{task_id}",
+        "params": [
+            {"flag": "--task-id", "api_name": "task_id", "kind": "path", "type": "int", "required": True},
         ],
     },
     "tasks-complete": {
@@ -280,6 +289,13 @@ def parse_command_args(config, argv):
             }[param["kind"]]
             if param["api_name"] not in target:
                 raise SystemExit(f"Missing required option: {param['flag']}")
+
+    if config["path"] == "/daily-tasks" and config["method"] == "POST":
+        has_template = body_values.get("task_template_id") is not None
+        name_value = body_values.get("name")
+        has_name = isinstance(name_value, str) and name_value.strip() != ""
+        if has_template == has_name:
+            raise SystemExit("tasks-add requires either --template-id or --name")
 
     if "is_active" not in body_values and any(param["api_name"] == "is_active" for param in config["params"]):
         body_values["is_active"] = True

@@ -260,3 +260,156 @@ def test_mcp_update_project_rejects_invalid_status(client) -> None:
 
     assert update_response.status_code == 200
     assert update_response.json()["error"]["message"] == "项目状态无效"
+
+
+def test_mcp_create_daily_task_supports_standalone_mode(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-standalone-task",
+    )
+
+    response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_daily_task",
+            "arguments": {
+                "name": "独立任务",
+                "date": "2026-06-20",
+                "estimated_duration_minutes": 35,
+                "reward_amount": 1200,
+            },
+        },
+        request_id=13,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["structuredContent"] == {
+        "id": response.json()["result"]["structuredContent"]["id"],
+        "date": "2026-06-20",
+        "project_id": None,
+        "task_template_id": None,
+        "name_snapshot": "独立任务",
+        "estimated_duration_minutes_snapshot": 35,
+        "reward_amount_snapshot": 1200,
+        "status": "pending",
+        "actual_duration_minutes": None,
+        "completed_at": None,
+    }
+
+
+def test_mcp_delete_daily_task_deletes_standalone_task(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-delete-standalone-task",
+    )
+
+    create_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_daily_task",
+            "arguments": {
+                "name": "可删除任务",
+                "date": "2026-06-20",
+                "estimated_duration_minutes": 20,
+                "reward_amount": 500,
+            },
+        },
+        request_id=14,
+    )
+    assert create_response.status_code == 200
+    task_id = create_response.json()["result"]["structuredContent"]["id"]
+
+    delete_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "delete_daily_task", "arguments": {"task_id": task_id}},
+        request_id=15,
+    )
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["result"]["structuredContent"] == {"ok": True}
+
+    list_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "list_daily_tasks", "arguments": {"date": "2026-06-20"}},
+        request_id=16,
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()["result"]["structuredContent"] == []
+
+
+def test_mcp_delete_daily_task_rejects_template_based_task(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-delete-template-task",
+    )
+
+    create_project_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "create_project", "arguments": {"name": "健身"}},
+        request_id=17,
+    )
+    assert create_project_response.status_code == 200
+    project_id = create_project_response.json()["result"]["structuredContent"]["id"]
+
+    create_template_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_task_template",
+            "arguments": {
+                "project_id": project_id,
+                "name": "跑步 30 分钟",
+                "default_estimated_duration_minutes": 30,
+                "default_reward_amount": 2000,
+            },
+        },
+        request_id=18,
+    )
+    assert create_template_response.status_code == 200
+    template_id = create_template_response.json()["result"]["structuredContent"]["id"]
+
+    create_task_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_daily_task",
+            "arguments": {
+                "task_template_id": template_id,
+                "date": "2026-06-20",
+                "estimated_duration_minutes": 30,
+                "reward_amount": 2000,
+            },
+        },
+        request_id=19,
+    )
+    assert create_task_response.status_code == 200
+    task_id = create_task_response.json()["result"]["structuredContent"]["id"]
+
+    delete_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "delete_daily_task", "arguments": {"task_id": task_id}},
+        request_id=20,
+    )
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["error"]["message"] == "只有独立任务支持删除"

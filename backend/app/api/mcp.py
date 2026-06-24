@@ -335,17 +335,17 @@ async def handle_mcp(
                     ),
                     _tool_descriptor(
                         "create_daily_task",
-                        "Create a daily task from an existing template.",
+                        "Create a daily task from a template or as a standalone task.",
                         {
                             "type": "object",
                             "properties": {
                                 "task_template_id": {"type": "integer"},
+                                "name": {"type": "string"},
                                 "date": {"type": "string", "format": "date"},
                                 "estimated_duration_minutes": {"type": "integer"},
                                 "reward_amount": {"type": "integer"},
                             },
                             "required": [
-                                "task_template_id",
                                 "date",
                                 "estimated_duration_minutes",
                                 "reward_amount",
@@ -356,13 +356,29 @@ async def handle_mcp(
                             "properties": {
                                 "id": {"type": "integer"},
                                 "date": {"type": "string"},
-                                "project_id": {"type": "integer"},
-                                "task_template_id": {"type": "integer"},
+                                "project_id": {"type": ["integer", "null"]},
+                                "task_template_id": {"type": ["integer", "null"]},
                                 "name_snapshot": {"type": "string"},
                                 "estimated_duration_minutes_snapshot": {"type": "integer"},
                                 "reward_amount_snapshot": {"type": "integer"},
                                 "status": {"type": "string"},
                             },
+                        },
+                    ),
+                    _tool_descriptor(
+                        "delete_daily_task",
+                        "Delete a standalone daily task.",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "integer"},
+                            },
+                            "required": ["task_id"],
+                        },
+                        {
+                            "type": "object",
+                            "properties": {"ok": {"type": "boolean"}},
+                            "required": ["ok"],
                         },
                     ),
                     _tool_descriptor(
@@ -613,7 +629,6 @@ async def handle_mcp(
 
         if tool_name == "create_daily_task":
             required_fields = [
-                "task_template_id",
                 "date",
                 "estimated_duration_minutes",
                 "reward_amount",
@@ -624,13 +639,6 @@ async def handle_mcp(
                     request_id,
                     f"Missing required argument: {missing[0]}",
                 )
-            task_template_id, invalid_response = _parse_int_argument(
-                request_id,
-                arguments["task_template_id"],
-                "task_template_id",
-            )
-            if invalid_response is not None:
-                return invalid_response
             target_date, invalid_response = _parse_date_argument(request_id, arguments["date"], "date")
             if invalid_response is not None:
                 return invalid_response
@@ -648,10 +656,20 @@ async def handle_mcp(
             )
             if invalid_response is not None:
                 return invalid_response
+            task_template_id = None
+            if arguments.get("task_template_id") is not None:
+                task_template_id, invalid_response = _parse_int_argument(
+                    request_id,
+                    arguments["task_template_id"],
+                    "task_template_id",
+                )
+                if invalid_response is not None:
+                    return invalid_response
             try:
                 result = DailyTaskRead.model_validate(
                     service.create_daily_task(
                         task_template_id=task_template_id,
+                        name=arguments.get("name"),
                         date=target_date,
                         estimated_duration_minutes=estimated_duration,
                         reward_amount=reward_amount,
@@ -661,6 +679,22 @@ async def handle_mcp(
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))
             return _jsonrpc_result(request_id, _text_result(result))
+
+        if tool_name == "delete_daily_task":
+            if "task_id" not in arguments:
+                return _invalid_params(request_id, "Missing required argument: task_id")
+            task_id, invalid_response = _parse_int_argument(
+                request_id,
+                arguments["task_id"],
+                "task_id",
+            )
+            if invalid_response is not None:
+                return invalid_response
+            try:
+                service.delete_daily_task(task_id, user=_user)
+            except ValueError as exc:
+                return _jsonrpc_error(request_id, -32000, str(exc))
+            return _jsonrpc_result(request_id, _text_result({"ok": True}))
 
         if tool_name == "complete_daily_task":
             if "task_id" not in arguments:
