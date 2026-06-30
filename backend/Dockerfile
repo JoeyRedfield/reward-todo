@@ -1,4 +1,4 @@
-FROM my-project-backend:latest
+FROM python:3.12-slim
 
 WORKDIR /app
 

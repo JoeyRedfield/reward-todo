@@ -50,6 +50,24 @@ test("renders reward ledger", async () => {
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();
 });
 
+test("renders negative reward ledger amounts with a single minus sign", async () => {
+  fetchRewardLedgerMock.mockResolvedValue([
+    {
+      id: 2,
+      entry_type: "spend",
+      amount: -500,
+      reason: "咖啡",
+      daily_task_id: null,
+      created_at: "2026-06-21T11:00:00Z",
+    },
+  ]);
+
+  render(<RewardsPage />);
+
+  expect(await screen.findByText("-¥5.00")).toBeInTheDocument();
+  expect(screen.queryByText("--¥5.00")).not.toBeInTheDocument();
+});
+
 test("submits reward spend form", async () => {
   render(<RewardsPage />);
   expect(await screen.findByText("跑步 30 分钟")).toBeInTheDocument();

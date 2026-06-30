@@ -3,15 +3,23 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import ValidationError
 
 from app.dependencies import get_task_reward_service, require_mcp_access_token
 from app.models import User
 from app.schemas.task_reward import (
+    CompleteDailyTaskRequest,
+    DailyTaskCreate,
     DailyTaskRead,
     RewardLedgerRead,
+    RewardSpendRequest,
     RewardSummaryRead,
+    TaskProjectCreate,
     TaskProjectRead,
+    TaskProjectUpdate,
+    TaskTemplateCreate,
     TaskTemplateRead,
+    TaskTemplateUpdate,
 )
 from app.services.task_reward_service import TaskRewardService
 
@@ -95,6 +103,25 @@ def _parse_int_argument(request_id, value, field_name: str):
         return int(value), None
     except (TypeError, ValueError):
         return None, _invalid_params(request_id, f"Invalid params: {field_name} must be an integer")
+
+
+def _validation_message(exc: ValidationError) -> str:
+    errors = exc.errors()
+    if not errors:
+        return "Invalid params"
+    first_error = errors[0]
+    field_path = ".".join(str(part) for part in first_error.get("loc", ()))
+    message = first_error.get("msg", "Invalid value")
+    if field_path:
+        return f"Invalid params: {field_path}: {message}"
+    return f"Invalid params: {message}"
+
+
+def _validate_payload(request_id, schema, payload: dict[str, Any]):
+    try:
+        return schema.model_validate(payload), None
+    except ValidationError as exc:
+        return None, _invalid_params(request_id, _validation_message(exc))
 
 
 @router.post("")
@@ -507,8 +534,15 @@ async def handle_mcp(
         if tool_name == "create_project":
             if not arguments.get("name"):
                 return _invalid_params(request_id, "Missing required argument: name")
+            payload, invalid_response = _validate_payload(
+                request_id,
+                TaskProjectCreate,
+                {"name": arguments["name"]},
+            )
+            if invalid_response is not None:
+                return invalid_response
             result = TaskProjectRead.model_validate(
-                service.create_project(arguments["name"], user=_user)
+                service.create_project(payload.name, user=_user)
             ).model_dump()
             return _jsonrpc_result(request_id, _text_result(result))
 
@@ -536,9 +570,20 @@ async def handle_mcp(
                 "status": arguments.get("status"),
                 "sort_order": sort_order,
             }
+            payload, invalid_response = _validate_payload(
+                request_id,
+                TaskProjectUpdate,
+                changes,
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = TaskProjectRead.model_validate(
-                    service.update_project(project_id, user=_user, **changes)
+                    service.update_project(
+                        project_id,
+                        user=_user,
+                        **payload.model_dump(exclude_none=True),
+                    )
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))
@@ -578,16 +623,30 @@ async def handle_mcp(
             )
             if invalid_response is not None:
                 return invalid_response
+            payload, invalid_response = _validate_payload(
+                request_id,
+                TaskTemplateCreate,
+                {
+                    "project_id": project_id,
+                    "name": arguments["name"],
+                    "default_estimated_duration_minutes": duration_minutes,
+                    "default_reward_amount": reward_amount,
+                    "notes": arguments.get("notes", ""),
+                    "is_active": arguments.get("is_active", True),
+                },
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = TaskTemplateRead.model_validate(
                     service.create_task_template(
-                        project_id=project_id,
-                        name=arguments["name"],
-                        default_estimated_duration_minutes=duration_minutes,
-                        default_reward_amount=reward_amount,
+                        project_id=payload.project_id,
+                        name=payload.name,
+                        default_estimated_duration_minutes=payload.default_estimated_duration_minutes,
+                        default_reward_amount=payload.default_reward_amount,
                         user=_user,
-                        notes=arguments.get("notes", ""),
-                        is_active=bool(arguments.get("is_active", True)),
+                        notes=payload.notes,
+                        is_active=payload.is_active,
                     )
                 ).model_dump()
             except ValueError as exc:
@@ -629,9 +688,20 @@ async def handle_mcp(
                 "notes": arguments.get("notes"),
                 "is_active": arguments.get("is_active"),
             }
+            payload, invalid_response = _validate_payload(
+                request_id,
+                TaskTemplateUpdate,
+                changes,
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = TaskTemplateRead.model_validate(
-                    service.update_task_template(template_id, user=_user, **changes)
+                    service.update_task_template(
+                        template_id,
+                        user=_user,
+                        **payload.model_dump(exclude_none=True),
+                    )
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))
@@ -675,14 +745,27 @@ async def handle_mcp(
                 )
                 if invalid_response is not None:
                     return invalid_response
+            payload, invalid_response = _validate_payload(
+                request_id,
+                DailyTaskCreate,
+                {
+                    "task_template_id": task_template_id,
+                    "name": arguments.get("name"),
+                    "date": target_date,
+                    "estimated_duration_minutes": estimated_duration,
+                    "reward_amount": reward_amount,
+                },
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = DailyTaskRead.model_validate(
                     service.create_daily_task(
-                        task_template_id=task_template_id,
-                        name=arguments.get("name"),
-                        date=target_date,
-                        estimated_duration_minutes=estimated_duration,
-                        reward_amount=reward_amount,
+                        task_template_id=payload.task_template_id,
+                        name=payload.name,
+                        date=payload.date,
+                        estimated_duration_minutes=payload.estimated_duration_minutes,
+                        reward_amount=payload.reward_amount,
                         user=_user,
                     )
                 ).model_dump()
@@ -725,12 +808,19 @@ async def handle_mcp(
                 )
                 if invalid_response is not None:
                     return invalid_response
+            payload, invalid_response = _validate_payload(
+                request_id,
+                CompleteDailyTaskRequest,
+                {"actual_duration_minutes": actual_duration},
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = DailyTaskRead.model_validate(
                     service.complete_daily_task(
                         task_id,
                         user=_user,
-                        actual_duration_minutes=actual_duration,
+                        actual_duration_minutes=payload.actual_duration_minutes,
                     )
                 ).model_dump()
             except ValueError as exc:
@@ -770,9 +860,16 @@ async def handle_mcp(
             )
             if invalid_response is not None:
                 return invalid_response
+            payload, invalid_response = _validate_payload(
+                request_id,
+                RewardSpendRequest,
+                {"amount": amount, "reason": arguments["reason"]},
+            )
+            if invalid_response is not None:
+                return invalid_response
             try:
                 result = RewardLedgerRead.model_validate(
-                    service.spend_reward(amount, arguments["reason"], user=_user)
+                    service.spend_reward(payload.amount, payload.reason, user=_user)
                 ).model_dump()
             except ValueError as exc:
                 return _jsonrpc_error(request_id, -32000, str(exc))

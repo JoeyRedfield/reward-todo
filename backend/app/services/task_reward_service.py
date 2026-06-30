@@ -12,6 +12,8 @@ from app.schemas.task_reward import RewardSummaryRead
 class TaskRewardService:
     ALLOWED_PROJECT_STATUSES = {"active", "archived"}
     DAILY_TASK_NAME_MAX_LENGTH = 200
+    MIN_DURATION_MINUTES = 1
+    MAX_DURATION_MINUTES = 1440
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -72,6 +74,8 @@ class TaskRewardService:
         is_active: bool = True,
     ) -> TaskTemplate:
         normalized_name = self._normalize_required_name(name, "模板名称不能为空")
+        self._validate_duration_minutes(default_estimated_duration_minutes, "预计时长")
+        self._validate_reward_amount(default_reward_amount)
         self._get_project(project_id, user=user)
         template = TaskTemplate(
             project_id=project_id,
@@ -96,6 +100,10 @@ class TaskRewardService:
         for key, value in changes.items():
             if key == "name" and value is not None:
                 value = self._normalize_required_name(value, "模板名称不能为空")
+            if key == "default_estimated_duration_minutes" and value is not None:
+                self._validate_duration_minutes(value, "预计时长")
+            if key == "default_reward_amount" and value is not None:
+                self._validate_reward_amount(value)
             if value is not None and hasattr(template, key):
                 setattr(template, key, value)
         self.session.commit()
@@ -131,6 +139,8 @@ class TaskRewardService:
             task_template_id=task_template_id,
             name=name,
         )
+        self._validate_duration_minutes(estimated_duration_minutes, "预计时长")
+        self._validate_reward_amount(reward_amount)
 
         template: Optional[TaskTemplate] = None
         project_id: Optional[int] = None
@@ -256,6 +266,8 @@ class TaskRewardService:
         actual_duration_minutes: Optional[int] = None,
     ) -> DailyTask:
         task = self._get_daily_task(task_id, user=user)
+        if actual_duration_minutes is not None:
+            self._validate_duration_minutes(actual_duration_minutes, "实际时长")
         if task.status == "completed":
             return task
 
@@ -338,6 +350,9 @@ class TaskRewardService:
         ).all()
 
     def spend_reward(self, amount: int, reason: str, user: User) -> RewardLedger:
+        if amount <= 0:
+            raise ValueError("扣减金额必须大于 0")
+
         balance_stmt = select(func.coalesce(func.sum(RewardLedger.amount), 0)).where(
             RewardLedger.user_id == user.id
         )
@@ -383,6 +398,17 @@ class TaskRewardService:
     def _validate_project_status(self, status: str) -> None:
         if status not in self.ALLOWED_PROJECT_STATUSES:
             raise ValueError("项目状态无效")
+
+    def _validate_duration_minutes(self, value: int, label: str) -> None:
+        if value < self.MIN_DURATION_MINUTES or value > self.MAX_DURATION_MINUTES:
+            raise ValueError(
+                f"{label}必须在 {self.MIN_DURATION_MINUTES} 到 "
+                f"{self.MAX_DURATION_MINUTES} 分钟之间"
+            )
+
+    def _validate_reward_amount(self, value: int) -> None:
+        if value < 0:
+            raise ValueError("奖励金额不能为负数")
 
     def _normalize_required_name(self, value: str, message: str) -> str:
         normalized = value.strip()

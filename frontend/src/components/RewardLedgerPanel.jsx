@@ -1,8 +1,7 @@
 import { formatYuanFromFen } from "../utils/currency";
 
 function formatYuan(amount) {
-  const sign = amount >= 0 ? "" : "-";
-  return `${sign}${formatYuanFromFen(Math.abs(amount))}`;
+  return formatYuanFromFen(Math.abs(amount));
 }
 
 export default function RewardLedgerPanel({

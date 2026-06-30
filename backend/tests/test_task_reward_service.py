@@ -142,6 +142,17 @@ def test_spend_reward_insufficient_balance_rejects(db_session) -> None:
         service.spend_reward(amount=500, reason="咖啡", user=user)
 
 
+@pytest.mark.parametrize("amount", [0, -500])
+def test_spend_reward_rejects_non_positive_amount(db_session, amount) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+
+    with pytest.raises(ValueError, match="扣减金额必须大于 0"):
+        service.spend_reward(amount=amount, reason="无效扣减", user=user)
+
+    assert service.list_reward_ledger(20, user=user) == []
+
+
 def test_inactive_template_cannot_create_daily_task(db_session) -> None:
     service = TaskRewardService(db_session)
     user = _create_user(db_session)
@@ -248,6 +259,36 @@ def test_create_task_template_rejects_blank_name(db_session) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("duration", "reward", "message"),
+    [
+        (0, 1000, "预计时长必须在 1 到 1440 分钟之间"),
+        (1441, 1000, "预计时长必须在 1 到 1440 分钟之间"),
+        (30, -1, "奖励金额不能为负数"),
+    ],
+)
+def test_create_task_template_rejects_invalid_duration_or_reward(
+    db_session,
+    duration,
+    reward,
+    message,
+) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    project = service.create_project(name="健身", user=user)
+
+    with pytest.raises(ValueError, match=message):
+        service.create_task_template(
+            user=user,
+            project_id=project.id,
+            name="无效模板",
+            default_estimated_duration_minutes=duration,
+            default_reward_amount=reward,
+            notes="",
+            is_active=True,
+        )
+
+
 def test_create_daily_task_rejects_duplicate_template_for_same_date(db_session) -> None:
     service = TaskRewardService(db_session)
     user = _create_user(db_session)
@@ -325,6 +366,53 @@ def test_update_task_template_rejects_blank_name(db_session) -> None:
 
     with pytest.raises(ValueError, match="模板名称不能为空"):
         service.update_task_template(template.id, user=user, name="   ")
+
+
+@pytest.mark.parametrize(
+    ("duration", "reward", "message"),
+    [
+        (0, 1000, "预计时长必须在 1 到 1440 分钟之间"),
+        (1441, 1000, "预计时长必须在 1 到 1440 分钟之间"),
+        (30, -1, "奖励金额不能为负数"),
+    ],
+)
+def test_create_daily_task_rejects_invalid_duration_or_reward(
+    db_session,
+    duration,
+    reward,
+    message,
+) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+
+    with pytest.raises(ValueError, match=message):
+        service.create_daily_task(
+            user=user,
+            name="无效任务",
+            date=date(2026, 6, 20),
+            estimated_duration_minutes=duration,
+            reward_amount=reward,
+        )
+
+
+@pytest.mark.parametrize("actual_duration", [0, 1441])
+def test_complete_daily_task_rejects_invalid_actual_duration(db_session, actual_duration) -> None:
+    service = TaskRewardService(db_session)
+    user = _create_user(db_session)
+    task = service.create_daily_task(
+        user=user,
+        name="独立任务",
+        date=date(2026, 6, 20),
+        estimated_duration_minutes=30,
+        reward_amount=1000,
+    )
+
+    with pytest.raises(ValueError, match="实际时长必须在 1 到 1440 分钟之间"):
+        service.complete_daily_task(
+            task.id,
+            user=user,
+            actual_duration_minutes=actual_duration,
+        )
 
 
 def test_reward_summary_returns_current_balance_and_today_earned(db_session) -> None:

@@ -451,3 +451,105 @@ def test_mcp_delete_daily_task_rejects_template_based_task(client) -> None:
 
     assert delete_response.status_code == 200
     assert delete_response.json()["error"]["message"] == "只有独立任务支持删除"
+
+
+def test_mcp_spend_reward_rejects_non_positive_amount(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-invalid-spend",
+    )
+
+    response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "spend_reward", "arguments": {"amount": -500, "reason": "bad"}},
+        request_id=22,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32602
+    assert "amount" in payload["error"]["message"]
+
+    summary_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "get_reward_summary", "arguments": {}},
+        request_id=23,
+    )
+    assert summary_response.status_code == 200
+    assert summary_response.json()["result"]["structuredContent"]["current_balance"] == 0
+
+
+def test_mcp_create_task_template_rejects_out_of_range_duration(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-invalid-template-duration",
+    )
+
+    create_project_response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={"name": "create_project", "arguments": {"name": "健身"}},
+        request_id=24,
+    )
+    assert create_project_response.status_code == 200
+    project_id = create_project_response.json()["result"]["structuredContent"]["id"]
+
+    response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_task_template",
+            "arguments": {
+                "project_id": project_id,
+                "name": "无效模板",
+                "default_estimated_duration_minutes": 0,
+                "default_reward_amount": 1000,
+            },
+        },
+        request_id=25,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32602
+    assert "default_estimated_duration_minutes" in payload["error"]["message"]
+
+
+def test_mcp_create_daily_task_rejects_out_of_range_reward(client) -> None:
+    token = _create_mcp_token(
+        client,
+        username="reward",
+        password="super-secret",
+        name="bootstrap-mcp-invalid-daily-reward",
+    )
+
+    response = _mcp_call(
+        client,
+        token,
+        "tools/call",
+        params={
+            "name": "create_daily_task",
+            "arguments": {
+                "name": "无效任务",
+                "date": "2026-06-20",
+                "estimated_duration_minutes": 20,
+                "reward_amount": -1,
+            },
+        },
+        request_id=26,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32602
+    assert "reward_amount" in payload["error"]["message"]
